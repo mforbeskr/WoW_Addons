@@ -50,26 +50,27 @@ for ($y = 0; $y -lt 128; $y++) {
 }
 Save-Tga $linen "linen"
 
-# ---------- bamboo.tga: backdrop edge file, 8 squares of 64px ----------
+# ---------- bamboo.tga: backdrop edge file, 8 squares of 32px ----------
+# Drawn at 32px (the border shows it at ~10px), dark and low-contrast so it frames without shouting.
 # Order: left, right, top, bottom, topleft, topright, bottomleft, bottomright.
 # Top/bottom are drawn vertical; the client rotates them.
-$SEG = 64
-$STALK_LEFT = 10
-$STALK_WIDTH = 44
-$wetGreen = @(92, 128, 56)
-$rope = @(150, 124, 86)
+$SEG = 32
+$STALK_LEFT = 5
+$STALK_WIDTH = 22
+$wetGreen = @(52, 76, 34)
+$rope = @(104, 86, 60)
 $mottle = 0..($SEG - 1) | ForEach-Object { $rand.Next(-7, 8) }
 $fiber = 0..($SEG - 1) | ForEach-Object { $rand.Next(-6, 7) }
 # Water droplets on the stalk: x, y, radius
-$drops = @(@(19, 21, 2.7), @(37, 40, 2.1), @(27, 55, 1.7), @(44, 14, 1.4))
+$drops = @(@(10, 11, 1.6), @(19, 22, 1.2))
 
 # Color across a wet stalk; t goes 0..1 from one side to the other
 function Get-StalkColor($t, $var) {
   $t = [Math]::Min([Math]::Max($t, 0), 1)
   $shade = 0.32 + 0.68 * [Math]::Pow([Math]::Sin([Math]::PI * $t), 0.8)
-  $spec = (Gauss $t 0.27 0.035) * 0.9      # sharp wet highlight
-  $sheen = (Gauss $t 0.36 0.12) * 0.22     # soft sheen around it
-  $neon = (Gauss $t 0.8 0.05) * 0.45       # purple neon reflected on the shadow side
+  $spec = (Gauss $t 0.27 0.05) * 0.45      # wet highlight
+  $sheen = (Gauss $t 0.36 0.12) * 0.1      # soft sheen around it
+  $neon = (Gauss $t 0.8 0.07) * 0.3        # purple neon reflected on the shadow side
   @(
     ($wetGreen[0] * $shade + 255 * $spec + 200 * $sheen + 190 * $neon + $var),
     ($wetGreen[1] * $shade + 255 * $spec + 225 * $sheen + 70 * $neon + $var),
@@ -79,7 +80,7 @@ function Get-StalkColor($t, $var) {
 
 function Draw-Stalk($img, $ox) {
   for ($y = 0; $y -lt $SEG; $y++) {
-    $isNode = $y -ge 2 -and $y -le 3
+    $isNode = $y -eq 1
     $lo = $(if ($isNode) { $STALK_LEFT - 1 } else { $STALK_LEFT })
     $hi = $STALK_LEFT + $STALK_WIDTH + $(if ($isNode) { 1 } else { 0 })
     for ($x = 0; $x -lt $SEG; $x++) {
@@ -90,7 +91,7 @@ function Draw-Stalk($img, $ox) {
       # Node: a soft groove with a faint ridge. The border repeats this tile every few pixels,
       # so a strong node would make the stalk look like a segmented pipe
       $k = 1.0
-      if ($y -eq 2) { $k = 0.78 } elseif ($y -eq 3) { $k = 1.08 }
+      if ($y -eq 1) { $k = 0.8 } elseif ($y -eq 2) { $k = 1.06 }
 
       $highlight = $false
       foreach ($drop in $drops) {
@@ -105,7 +106,7 @@ function Draw-Stalk($img, $ox) {
           $k *= 0.8
         }
       }
-      if ($highlight) { Set-Px $img ($ox + $x) $y 235 240 255 (255 * $cover); continue }
+      if ($highlight) { Set-Px $img ($ox + $x) $y 150 160 175 (255 * $cover); continue }
       Set-Px $img ($ox + $x) $y ($col[0] * $k) ($col[1] * $k) ($col[2] * $k) (255 * $cover)
     }
   }
@@ -113,7 +114,7 @@ function Draw-Stalk($img, $ox) {
 
 # Corner: two stalks crossing, X-lashed with wet hemp rope and a knot on top
 function Draw-Lashing($img, $ox) {
-  $c = 31.5; $hw = $STALK_WIDTH / 2
+  $c = 15.5; $hw = $STALK_WIDTH / 2
   for ($y = 0; $y -lt $SEG; $y++) {
     for ($x = 0; $x -lt $SEG; $x++) {
       $dx = $x - $c; $dy = $y - $c
@@ -128,17 +129,17 @@ function Draw-Lashing($img, $ox) {
       }
 
       # Rope wraps along both diagonals over the crossing
-      if ([Math]::Abs($dx) -lt $hw + 3 -and [Math]::Abs($dy) -lt $hw + 3) {
+      if ([Math]::Abs($dx) -lt $hw + 2 -and [Math]::Abs($dy) -lt $hw + 2) {
         foreach ($dir in 1, -1) {
           $p = ($dx - $dir * $dy) / 1.414
           $along = ($dx + $dir * $dy) / 1.414
-          if ([Math]::Abs($p) -lt 11 -and [Math]::Abs($along) -lt $hw * 1.35) {
-            $v = (($p + 11) % 7.33) / 7.33
+          if ([Math]::Abs($p) -lt 5.5 -and [Math]::Abs($along) -lt $hw * 1.35) {
+            $v = (($p + 5.5) % 3.67) / 3.67
             if ($v -lt 0.85) {
               $vv = $v / 0.85
               $shade = 0.45 + 0.55 * [Math]::Sin([Math]::PI * $vv)
-              $twist = 0.82 + 0.18 * [Math]::Sin($along * 1.4 + $vv * 4)
-              $spec = (Gauss $vv 0.3 0.12) * 70
+              $twist = 0.82 + 0.18 * [Math]::Sin($along * 2.8 + $vv * 4)
+              $spec = (Gauss $vv 0.3 0.12) * 35
               $col = @(($rope[0] * $shade * $twist + $spec), ($rope[1] * $shade * $twist + $spec), ($rope[2] * $shade * $twist + $spec * 0.9))
               $alpha = 1
             }
@@ -148,11 +149,11 @@ function Draw-Lashing($img, $ox) {
 
       # Knot
       $kd = [Math]::Sqrt($dx * $dx + $dy * $dy)
-      if ($kd -lt 6.5) {
-        $shade = 0.55 + 0.45 * (1 - $kd / 6.5)
-        $spec = (Gauss ($dx + $dy) -4 2.5) * 80
+      if ($kd -lt 3.25) {
+        $shade = 0.55 + 0.45 * (1 - $kd / 3.25)
+        $spec = (Gauss ($dx + $dy) -2 1.25) * 40
         $col = @(($rope[0] * $shade + $spec), ($rope[1] * $shade + $spec), ($rope[2] * $shade + $spec))
-        $alpha = [Math]::Min(6.5 - $kd + 0.5, 1)
+        $alpha = [Math]::Min(3.25 - $kd + 0.5, 1)
       }
 
       if ($col) { Set-Px $img ($ox + $x) $y $col[0] $col[1] $col[2] (255 * $alpha) }

@@ -1,7 +1,7 @@
 ## Interface: 30300
 ## Title: |cffc77dffBamboo|r Bags
 ## Notes: All your bags in one bamboo-framed window. /bb
-## Version: 0.1
+## Version: 0.2
 ## SavedVariables: BambooBagsDB
 
 BambooBags.lua

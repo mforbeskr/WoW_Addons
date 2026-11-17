@@ -9,8 +9,8 @@ local COLUMNS = 14
 local SCALE = 0.6          -- Blizzard item buttons are 37px; this makes them ~22px
 local SIZE = 37 * SCALE
 local GAP = 3
-local EDGE = 16            -- bamboo border thickness
-local INSET = 20           -- frame edge to content
+local EDGE = 10            -- bamboo border thickness
+local INSET = 15           -- frame edge to content
 local HEADER = 26
 local SECTION_TITLE = 14
 local SECTION_GAP = 6
@@ -94,7 +94,7 @@ end
 local function SectionOf(b)
   local override = BambooBagsDB.sections[b.itemID]
   if override then return override end
-  if not b.slotOrder then return "general" end
+  if not b.slotOrder or b.quality == 0 then return "general" end
   if b.equipLoc == "INVTYPE_BODY" or b.equipLoc == "INVTYPE_TABARD" then return "rp" end
   return b.itemLevel >= BambooBagsDB.gearLevel and "gear" or "rp"
 end
@@ -172,11 +172,13 @@ end
 local Window = {}
 Window.__index = Window
 
--- opts: title, bags (list of bag ids), pointKey (saved position), defaultPoint, showMoney, extraButtons
+-- opts: title, bags (list of bag ids), pointKey (saved position), defaultPoint, showMoney, extraButtons,
+--       footer (extra pixels at the bottom for window-specific controls)
 local function NewWindow(frameName, opts)
   local w = setmetatable({
     name = frameName, bags = opts.bags, pointKey = opts.pointKey, defaultPoint = opts.defaultPoint,
     holders = {}, buttons = {}, allButtons = {}, sectionTitles = {}, stamp = 0, dirty = true,
+    footer = FOOTER + (opts.footer or 0),
   }, Window)
 
   local f = CreateFrame("Frame", frameName, UIParent)
@@ -190,7 +192,7 @@ local function NewWindow(frameName, opts)
   f:SetBackdrop({
     bgFile = TEX .. "linen", edgeFile = TEX .. "bamboo",
     tile = true, tileSize = 128, edgeSize = EDGE,
-    insets = { left = 5, right = 5, top = 5, bottom = 5 },
+    insets = { left = 3, right = 3, top = 3, bottom = 3 },
   })
   tinsert(UISpecialFrames, frameName) -- Escape closes it
 
@@ -429,12 +431,13 @@ function Window:Refresh()
     y = self:PlaceGrid(all, y) + SECTION_GAP
   end
 
-  f:SetHeight(y - SECTION_GAP + FOOTER + INSET)
+  f:SetHeight(y - SECTION_GAP + self.footer + INSET)
 
   self.sortButton.text:SetText(BambooBagsDB.sorted and "Sections" or "Bag order")
   self.freeText:SetText(string.format("Free  %d / %d", #empties, #all))
   self:UpdateMoney()
   self:ApplySearch()
+  if self.onRefresh then self.onRefresh() end
 end
 
 -- The two windows ------------------------------------------------------------
@@ -468,6 +471,7 @@ bankWindow = NewWindow("BambooBankFrame", {
   bags = bankBags,
   pointKey = "bankPoint",
   defaultPoint = { "TOPLEFT", "TOPLEFT", 40, -110 },
+  footer = SIZE + 6, -- room for the bank bag slot row
 })
 
 -- Light up the backpack and bag bar buttons while the bags are open, like the default UI does
@@ -482,13 +486,23 @@ end
 bagsWindow.onShow = function() SetBagBarLit(true) end
 bagsWindow.onHide = function() SetBagBarLit(false) end
 
--- Sell junk: a footer button that only shows while a vendor is open
+-- Sell junk: a footer button that only shows while a vendor is open.
+-- Only grey items, and never one you've put in Outfits with Alt+click.
+local function JunkAt(bag, slot)
+  local link = GetContainerItemLink(bag, slot)
+  if not link then return end
+  local _, _, quality, _, _, _, _, _, _, _, price = GetItemInfo(link)
+  if quality ~= 0 then return end
+  local itemID = tonumber(link:match("item:(%d+)"))
+  if BambooBagsDB.sections[itemID] == "rp" then return end
+  return price or 0
+end
+
 local function CountJunk()
   local count = 0
   for bag = 0, NUM_BAG_SLOTS do
     for slot = 1, GetContainerNumSlots(bag) do
-      local link = GetContainerItemLink(bag, slot)
-      if link and select(3, GetItemInfo(link)) == 0 then count = count + 1 end
+      if JunkAt(bag, slot) then count = count + 1 end
     end
   end
   return count
@@ -499,15 +513,12 @@ local function SellJunk()
   local sold, copper = 0, 0
   for bag = 0, NUM_BAG_SLOTS do
     for slot = 1, GetContainerNumSlots(bag) do
-      local link = GetContainerItemLink(bag, slot)
+      local price = JunkAt(bag, slot)
       local _, itemCount, locked = GetContainerItemInfo(bag, slot)
-      if link and not locked then
-        local _, _, quality, _, _, _, _, _, _, _, price = GetItemInfo(link)
-        if quality == 0 then
-          UseContainerItem(bag, slot) -- with a vendor open, this sells the item
-          sold = sold + 1
-          copper = copper + (price or 0) * (itemCount or 1)
-        end
+      if price and not locked then
+        UseContainerItem(bag, slot) -- with a vendor open, this sells the item
+        sold = sold + 1
+        copper = copper + price * (itemCount or 1)
       end
     end
   end
@@ -529,6 +540,87 @@ local function UpdateSellButton()
   sellButton.text:SetText(count > 0 and ("Sell junk (" .. count .. ")") or "No junk")
 end
 
+-- Bank bag slots: Blizzard's bank frame is hidden, so the bank window gets its own row of
+-- bag slots (click or drag a bag onto one) and a button to buy the next slot.
+local function MoneyString(copper)
+  return GetCoinTextureString and GetCoinTextureString(copper)
+    or string.format("%dg %ds %dc", copper / 10000, (copper / 100) % 100, copper % 100)
+end
+
+StaticPopupDialogs.BAMBOOBAGS_BUY_BANK_SLOT = {
+  text = "Buy a new bank bag slot for %s?",
+  button1 = YES,
+  button2 = NO,
+  OnAccept = function() PurchaseSlot() end,
+  timeout = 0,
+  whileDead = 1,
+  hideOnEscape = 1,
+}
+
+local bankSlots = {}
+for i = 1, NUM_BANKBAGSLOTS do
+  local invSlot = BankButtonIDToInvSlotID(i, 1)
+  local b = CreateFrame("Button", nil, bankWindow.frame)
+  b:SetWidth(SIZE)
+  b:SetHeight(SIZE)
+  b:SetPoint("BOTTOMLEFT", bankWindow.frame, "BOTTOMLEFT", INSET + (i - 1) * (SIZE + GAP), INSET + FOOTER - 2)
+  b.icon = b:CreateTexture(nil, "ARTWORK")
+  b.icon:SetAllPoints()
+  b:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
+  b:GetHighlightTexture():SetVertexColor(unpack(NEON))
+  b:RegisterForDrag("LeftButton")
+
+  local function PickupOrPlace()
+    if i > GetNumBankSlots() then return end
+    if CursorHasItem() then PutItemInBag(invSlot) else PickupBagFromSlot(invSlot) end
+  end
+  b:SetScript("OnClick", PickupOrPlace)
+  b:SetScript("OnDragStart", PickupOrPlace)
+  b:SetScript("OnReceiveDrag", PickupOrPlace)
+  b:SetScript("OnEnter", function(self)
+    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+    if i > GetNumBankSlots() then
+      GameTooltip:SetText("Bank bag slot (not bought yet)")
+    elseif not GameTooltip:SetInventoryItem("player", invSlot) then
+      GameTooltip:SetText("Empty bank bag slot")
+    end
+    GameTooltip:Show()
+  end)
+  b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+  bankSlots[i] = { button = b, invSlot = invSlot }
+end
+
+local buySlotButton = NeonButton(bankWindow.frame, "Buy slot", 120, function()
+  local owned, full = GetNumBankSlots()
+  if full then return end
+  local cost = GetBankSlotCost(owned)
+  if GetMoney() < cost then
+    print("|cffc77dffBambooBags|r: the next bank slot costs " .. MoneyString(cost) .. ", you can't afford it yet.")
+    return
+  end
+  StaticPopup_Show("BAMBOOBAGS_BUY_BANK_SLOT", MoneyString(cost))
+end)
+buySlotButton:SetPoint("LEFT", bankSlots[NUM_BANKBAGSLOTS].button, "RIGHT", 8, 0)
+
+bankWindow.onRefresh = function()
+  local owned, full = GetNumBankSlots()
+  for i, s in ipairs(bankSlots) do
+    local texture = GetInventoryItemTexture("player", s.invSlot)
+    s.button.icon:SetTexture(texture or "Interface\\PaperDoll\\UI-PaperDoll-Slot-Bag")
+    if i > owned then
+      s.button.icon:SetVertexColor(1, 0.25, 0.25)
+    else
+      s.button.icon:SetVertexColor(1, 1, 1)
+    end
+  end
+  if full then
+    buySlotButton:Hide()
+  else
+    buySlotButton.text:SetText("Buy slot  " .. MoneyString(GetBankSlotCost(owned)))
+    buySlotButton:Show()
+  end
+end
+
 -- Closing our bank window ends the bank visit, just like closing Blizzard's
 bankWindow.onHide = function() CloseBankFrame() end
 
@@ -544,6 +636,7 @@ events:RegisterEvent("BAG_UPDATE")
 events:RegisterEvent("ITEM_LOCK_CHANGED")
 events:RegisterEvent("BAG_UPDATE_COOLDOWN")
 events:RegisterEvent("PLAYERBANKSLOTS_CHANGED")
+events:RegisterEvent("PLAYERBANKBAGSLOTS_CHANGED")
 events:RegisterEvent("PLAYER_MONEY")
 events:RegisterEvent("BANKFRAME_OPENED")
 events:RegisterEvent("BANKFRAME_CLOSED")
