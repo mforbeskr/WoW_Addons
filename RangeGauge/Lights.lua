@@ -11,7 +11,10 @@ local _, ns = ...
 -- 30 full checks per second, plus the melee/reach answer every frame so a zone change (and the
 -- click) is never late. Higher than the usual 0.1-0.2s on purpose: this is a live PvP display.
 local UPDATE_INTERVAL = 0.033
-local PARTICLES = 250 -- map tracker size per row (see Tracker.lua)
+-- Map tracker size per row (see Tracker.lua). CPU cost scales with this number.
+-- LIGHTER MODE: set this to 120 (and the bar's NewTracker(400) in Gauge.lua to 120) to roughly
+-- halve RangeGauge's CPU use; the simulator shows only ~0.04 yd more error (0.65 -> 0.69 yd).
+local PARTICLES = 250
 local FLASH_DECAY = 3
 local ROW_WIDTH = 200
 local ROW_HEIGHT = 22

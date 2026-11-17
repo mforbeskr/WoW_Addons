@@ -40,7 +40,10 @@ local function CanWear(link)
   return ok
 end
 
--- The bank can only be read while it's open, so remember its contents per character
+-- The bank can only be read while it's open, so remember its contents per character.
+-- Bag events come in bursts (one per changed bag, often several per click), so a change only
+-- queues a scan, and one scan runs SCAN_DELAY later for the whole burst.
+local SCAN_DELAY = 0.2
 local bankOpen = false
 local function ScanBank()
   if not bankOpen then return end
@@ -56,10 +59,37 @@ local function ScanBank()
   ns.charDB.bank = ids
 end
 
+-- Runs the queued scan; hidden (and so idle) when nothing is queued
+local scanner = CreateFrame("Frame")
+scanner:Hide()
+scanner.wait = 0
+scanner:SetScript("OnUpdate", function(self, elapsed)
+  self.wait = self.wait - elapsed
+  if self.wait > 0 then return end
+  self:Hide()
+  ScanBank()
+end)
+
+local function QueueScan()
+  if not bankOpen or scanner:IsShown() then return end -- already queued: joins that scan
+  scanner.wait = SCAN_DELAY
+  scanner:Show()
+end
+
 ns.On("BANKFRAME_OPENED", function() bankOpen = true; ScanBank() end)
-ns.On("BANKFRAME_CLOSED", function() bankOpen = false end)
-ns.On("PLAYERBANKSLOTS_CHANGED", ScanBank)
-ns.On("BAG_UPDATE", ScanBank)
+ns.On("BANKFRAME_CLOSED", function()
+  -- A change right before closing: scan now, while the bank can still be read
+  if scanner:IsShown() then
+    scanner:Hide()
+    ScanBank()
+  end
+  bankOpen = false
+end)
+ns.On("PLAYERBANKSLOTS_CHANGED", QueueScan)
+ns.On("BAG_UPDATE", function(bag)
+  -- Only the bank's own slots (-1) and bank bags (after your 4 bags) matter here
+  if bag == BANK_CONTAINER or (bag and bag > NUM_BAG_SLOTS) then QueueScan() end
+end)
 
 -- Returns pool[slotIndex] = { itemID, ... } and the total number of distinct items
 function ns.BuildPool()

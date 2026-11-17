@@ -115,6 +115,9 @@ Next ideas:
 
 ## Smaller ideas
 
+- RangeGauge lighter mode, if it ever feels heavy: set `PARTICLES` in `Lights.lua` and the
+  bar's `NewTracker(400)` in `Gauge.lua` to 120. Roughly half the CPU, ~0.04 yd less
+  accurate (simulator). Then `/reload`.
 - Maelstrom Weapon tracker (enhancement): glow or sound at 5 stacks. Uses `UNIT_AURA`.
 - BambooBags: button to buy bank bag slots (the Blizzard bank screen is hidden now).
 - BambooBags: optionally sell more than greys (old food, etc.), never touching Outfits.

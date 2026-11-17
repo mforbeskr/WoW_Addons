@@ -125,7 +125,7 @@ end
 
 -- Measuring and the marker -----------------------------------------------------------
 
-local tracker = ns.NewTracker(400)
+local tracker = ns.NewTracker(400) -- lighter mode: 120 (see PARTICLES in Lights.lua)
 local state = "unknown"
 local lastZone            -- to notice the target stepping into another zone
 local lastKey             -- last melee/reach answer; checked every frame for an instant click
