@@ -4,7 +4,6 @@
 
 local TEX = "Interface\\AddOns\\BambooBags\\textures\\"
 local NEON = { 0.78, 0.35, 1 }
-local TWINE = { 0.62, 0.52, 0.36 }
 local COLUMNS = 14
 local SCALE = 0.6          -- Blizzard item buttons are 37px; this makes them ~22px
 local SIZE = 37 * SCALE
@@ -52,6 +51,59 @@ local function RefreshAll()
 end
 
 -- Shared helpers -------------------------------------------------------------
+
+-- Covers the frame (inside its 3px inset) with 128px linen tiles, cropping the last row/column.
+-- Tiles are created once and reused; only runs when the window is laid out.
+local CLOTH, CLOTH_INSET = 128, 3
+local function TileCloth(f, w, h)
+  w, h = w - CLOTH_INSET * 2, h - CLOTH_INSET * 2
+  local cols, rows = math.ceil(w / CLOTH), math.ceil(h / CLOTH)
+  local n = 0
+  for r = 1, rows do
+    local th = math.min(CLOTH, h - (r - 1) * CLOTH)
+    for c = 1, cols do
+      local tw = math.min(CLOTH, w - (c - 1) * CLOTH)
+      n = n + 1
+      local t = f.cloth[n]
+      if not t then
+        t = f:CreateTexture(nil, "BACKGROUND")
+        t:SetTexture(TEX .. "linen")
+        f.cloth[n] = t
+      end
+      t:ClearAllPoints()
+      t:SetPoint("TOPLEFT", CLOTH_INSET + (c - 1) * CLOTH, -(CLOTH_INSET + (r - 1) * CLOTH))
+      t:SetWidth(tw)
+      t:SetHeight(th)
+      t:SetTexCoord(0, tw / CLOTH, 0, th / CLOTH)
+      t:Show()
+    end
+  end
+  for i = n + 1, #f.cloth do f.cloth[i]:Hide() end
+end
+
+-- Lays out a stitch line of the given width from 64px pieces; pieces are created once and reused
+local function SetStitchWidth(line, w)
+  line:SetWidth(w)
+  local n = math.ceil(w / 64)
+  for i = 1, math.max(n, #line.segs) do
+    local seg = line.segs[i]
+    if i <= n then
+      if not seg then
+        seg = line:CreateTexture(nil, "ARTWORK")
+        seg:SetTexture(TEX .. "stitch")
+        seg:SetHeight(8)
+        seg:SetPoint("LEFT", (i - 1) * 64, 0)
+        line.segs[i] = seg
+      end
+      local segW = math.min(64, w - (i - 1) * 64)
+      seg:SetWidth(segW)
+      seg:SetTexCoord(0, segW / 64, 0, 1)
+      seg:Show()
+    elseif seg then
+      seg:Hide()
+    end
+  end
+end
 
 local function Glow(parent, alpha)
   local t = parent:CreateTexture(nil, "BACKGROUND")
@@ -190,10 +242,10 @@ local function NewWindow(frameName, opts)
   f:EnableMouse(true)
   f:RegisterForDrag("LeftButton")
   f:SetBackdrop({
-    bgFile = TEX .. "linen", edgeFile = TEX .. "bamboo",
-    tile = true, tileSize = 128, edgeSize = EDGE,
+    edgeFile = TEX .. "bamboo", edgeSize = EDGE,
     insets = { left = 3, right = 3, top = 3, bottom = 3 },
   })
+  f.cloth = {} -- linen tiles, laid out by TileCloth (backdrop tiling smears past a few tiles)
   tinsert(UISpecialFrames, frameName) -- Escape closes it
 
   local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -242,14 +294,15 @@ local function NewWindow(frameName, opts)
   search:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
   search:SetScript("OnTextChanged", function() w:ApplySearch() end)
 
-  -- Section titles, each followed by a thin twine line
+  -- Section titles, each followed by a stitched line
   for _, s in ipairs(SECTIONS) do
     local t = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     t:SetText(s.label)
     t:SetTextColor(unpack(NEON))
-    local line = f:CreateTexture(nil, "ARTWORK")
-    line:SetTexture(TWINE[1], TWINE[2], TWINE[3], 0.7)
-    line:SetHeight(1)
+    -- Embroidered running stitch, built from 64px pieces (the client won't repeat a texture)
+    local line = CreateFrame("Frame", nil, f)
+    line.segs = {}
+    line:SetHeight(8)
     line:SetPoint("LEFT", t, "RIGHT", 6, 0)
     w.sectionTitles[s.key] = { title = t, line = line }
   end
@@ -415,7 +468,8 @@ function Window:Refresh()
         st.title:ClearAllPoints()
         st.title:SetPoint("TOPLEFT", f, "TOPLEFT", INSET, -y)
         st.title:Show()
-        st.line:SetWidth(width - INSET * 2 - st.title:GetStringWidth() - 6)
+        local lineW = width - INSET * 2 - st.title:GetStringWidth() - 6
+        SetStitchWidth(st.line, lineW)
         st.line:Show()
         y = self:PlaceGrid(list, y + SECTION_TITLE) + SECTION_GAP
       else
@@ -432,6 +486,7 @@ function Window:Refresh()
   end
 
   f:SetHeight(y - SECTION_GAP + self.footer + INSET)
+  TileCloth(f, width, y - SECTION_GAP + self.footer + INSET)
 
   self.sortButton.text:SetText(BambooBagsDB.sorted and "Sections" or "Bag order")
   self.freeText:SetText(string.format("Free  %d / %d", #empties, #all))

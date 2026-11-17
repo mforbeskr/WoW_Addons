@@ -34,21 +34,77 @@ function Gauss($v, $center, $width) { [Math]::Exp(-[Math]::Pow(($v - $center) / 
 
 $rand = New-Object Random 7
 
-# ---------- linen.tga: evening hemp linen, tileable 128x128 ----------
+# ---------- linen.tga: evening hemp cloth, tileable 128x128 ----------
+# Plain weave of 8px threads (finer ones moire into stripes when the UI scales the frame down): each thread is rounded (lit in the middle, dark where it meets
+# its neighbours) and dips under the crossing thread at its ends. Per-thread slubs give the
+# uneven hemp look; a faint low-frequency mottle keeps big frames from looking printed.
 $linen = New-Image 128 128
-$base = @(74, 64, 51)
-$rowSlub = 0..127 | ForEach-Object { $rand.Next(-9, 10) }
-$colSlub = 0..127 | ForEach-Object { $rand.Next(-9, 10) }
+$clothRand = New-Object Random 11   # own seed so the bamboo edge below stays unchanged
+$base = @(92, 79, 60)
+$CELL = 8
+$THREADS = 128 / $CELL
+$warpSlub = 0..($THREADS - 1) | ForEach-Object { $clothRand.Next(-6, 7) }
+$weftSlub = 0..($THREADS - 1) | ForEach-Object { $clothRand.Next(-6, 7) }
+$fiberCol = 0..127 | ForEach-Object { $clothRand.Next(-5, 6) }
+$fiberRow = 0..127 | ForEach-Object { $clothRand.Next(-5, 6) }
 for ($y = 0; $y -lt 128; $y++) {
   for ($x = 0; $x -lt 128; $x++) {
-    $over = ([Math]::Floor($x / 2) + [Math]::Floor($y / 2)) % 2
-    if ($over -eq 0) { $v = $colSlub[$x] + $(if ($x % 2 -eq 0) { 6 } else { -3 }) }
-    else             { $v = $rowSlub[$y] + $(if ($y % 2 -eq 0) { 4 } else { -5 }) }
-    $v += $rand.Next(-4, 5)
-    Set-Px $linen $x $y ($base[0] + $v) ($base[1] + $v) ($base[2] + $v * 0.8) 255
+    $cx = [Math]::Floor($x / $CELL); $cy = [Math]::Floor($y / $CELL)
+    $ux = (($x % $CELL) + 0.5) / $CELL; $uy = (($y % $CELL) + 0.5) / $CELL
+    if ((($cx + $cy) % 2) -eq 0) {
+      # warp (vertical) thread on top
+      $across = $ux; $along = $uy; $v = $warpSlub[$cx] + $fiberRow[$y]
+    } else {
+      # weft (horizontal) thread on top
+      $across = $uy; $along = $ux; $v = $weftSlub[$cy] + $fiberCol[$x]
+    }
+    $shade = (0.76 + 0.32 * [Math]::Pow([Math]::Sin([Math]::PI * $across), 0.7)) *
+             (0.9 + 0.1 * [Math]::Sin([Math]::PI * $along))
+    $mott = 4 * [Math]::Sin(2 * [Math]::PI * $x / 128 + 1.3) * [Math]::Sin(2 * [Math]::PI * $y / 64 + 0.4)
+    $v += $mott + $clothRand.Next(-3, 4)
+    Set-Px $linen $x $y (($base[0] + $v) * $shade) (($base[1] + $v) * $shade) (($base[2] + $v * 0.8) * $shade) 255
   }
 }
 Save-Tga $linen "linen"
+# The old linen drew 16640 numbers from $rand; replay them so bamboo.tga stays byte-identical
+for ($i = 0; $i -lt 16640; $i++) { [void]$rand.Next() }
+
+# ---------- stitch.tga: embroidered running stitch for section lines, 64x8 ----------
+# Tiles horizontally (SetTexCoord past 1). Twisted waxed-hemp thread, 11px stitches with
+# 5px gaps, a soft shadow under each stitch and a needle hole in each gap.
+$stitch = New-Image 64 8
+$thread = @(176, 148, 102)
+$STITCH_PERIOD = 16
+$STITCH_LEN = 11
+$cyS = 3.5
+for ($y = 0; $y -lt 8; $y++) {
+  for ($x = 0; $x -lt 64; $x++) {
+    $px = $x % $STITCH_PERIOD
+    $col = $null; $alpha = 0
+    $dy = $y - $cyS
+    if ($px -lt $STITCH_LEN) {
+      # Rounded stitch: 3px thick, tapered at its ends
+      $t = ($px + 0.5) / $STITCH_LEN
+      $half = 1.6 * [Math]::Min(1, [Math]::Sin([Math]::PI * $t) * 3)
+      $cover = [Math]::Min($half - [Math]::Abs($dy) + 0.5, 1)
+      if ($cover -gt 0) {
+        $round = 0.6 + 0.4 * [Math]::Cos([Math]::Min([Math]::Abs($dy) / ($half + 0.01), 1) * [Math]::PI / 2)
+        $lit = 1 - 0.15 * ($dy / 1.6)                       # light from above
+        $twist = 0.85 + 0.15 * [Math]::Cos(([Math]::PI * 2 / 3) * ($x + $y))   # plied fibres
+        $k = $round * $lit * $twist
+        $col = @(($thread[0] * $k), ($thread[1] * $k), ($thread[2] * $k)); $alpha = $cover
+      } elseif ($dy -gt 0 -and $dy -lt $half + 2) {
+        $col = @(0, 0, 0); $alpha = 0.45                    # shadow on the cloth below
+      }
+    } else {
+      # Needle hole between stitches
+      if ([Math]::Abs($dy) -lt 1 -and ($px -eq $STITCH_LEN + 1 -or $px -eq $STITCH_PERIOD - 2)) { $col = @(10, 8, 6); $alpha = 0.55 }
+    }
+    if ($col) { Set-Px $stitch $x $y $col[0] $col[1] $col[2] (255 * $alpha) }
+    else { Set-Px $stitch $x $y 0 0 0 0 }
+  }
+}
+Save-Tga $stitch "stitch"
 
 # ---------- bamboo.tga: backdrop edge file, 8 squares of 32px ----------
 # Drawn at 32px (the border shows it at ~10px), dark and low-contrast so it frames without shouting.
