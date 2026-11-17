@@ -1,0 +1,12 @@
+## Interface: 30300
+## Title: |cffc77dffTransmog|r Studio
+## Notes: Suggests outfits from gear you own and learns from your likes and dislikes. /ts
+## Version: 0.1
+## OptionalDeps: DressMe, BambooBags
+## SavedVariables: TransmogStudioDB
+## SavedVariablesPerCharacter: TransmogStudioCharDB
+
+Core.lua
+Pool.lua
+Generator.lua
+UI.lua

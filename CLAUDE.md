@@ -39,6 +39,10 @@ Addons must run well on weak PCs:
   position, `Locator.lua`, map size self-calibrated from run speed, saved per map).
   `/rg verify` checks item ranges in game. Python simulator for tuning: `RangeGauge/tools/sim/`
   (`python bench.py`; mirrors the Lua, keep both in sync). User guide: `RangeGauge/GUIDE.md`.
+- **TransmogStudio** (`/ts`) - suggests outfits from gear you own (equipped, bags, bank
+  remembered per character), shown on a model; Like/Dislike reweights items
+  (`Generator.lua`), click a slot to lock it, Favorites list, liked looks also saved into
+  DressMe. Uses BambooBags' bamboo textures when that's loaded. `/ts forget` resets learning.
 
 Ideas and to-dos: `BACKLOG.md`.
 
