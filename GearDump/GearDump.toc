@@ -1,0 +1,6 @@
+## Interface: 30300
+## Title: GearDump
+## Notes: Dumps equipped, bag and bank gear into a copyable text box. /geardump
+## Version: 1.0
+
+GearDump.lua
