@@ -2,7 +2,7 @@
 
 Shows, live, whether your target (and focus, and arena enemies) is inside your
 Auto Shot range.
-Version 0.3 - made for Hunters (WoW 3.3.5a).
+Version 0.4 - made for Hunters (WoW 3.3.5a).
 Two views of the same thing: range lights (default) and a range bar.
 
 ## 1. Install
@@ -65,10 +65,26 @@ What else moves:
   out of range), the light flashes and you hear a soft click. Clicking "on" =
   they came in, "off" = they left. Turn the click off with `/rg mute` (and back
   on with `/rg unmute`).
-- The yards number is a live, smoothed estimate. The game only answers
-  "in range or not" at certain distances, so the number glides between those
-  points. It's a good guide, but the color of the light at the reach line is
-  the exact part.
+- The yards number is a live estimate. The game only answers "in range or
+  not" at certain distances, so between those points the addon works it out
+  from how fast you and your target move, and (outside arenas) from where you
+  stand on the map. The color of the light at the reach line is always the
+  exact part.
+- The labels (GOOD, MAX, ALMOST...) follow the yards number, so they always
+  agree with it.
+
+### How the yards get better as you move
+
+- **Standing target** (casters, healers, training dummies): every time you
+  move, the addon narrows down where the target stands. After a few steps
+  the number follows you smoothly and closely, even between checkpoints.
+- **Moving target**: the game tells how fast it runs, not which way, so the
+  number is a bit rougher. It never runs off while nobody moves.
+- The first time you're in a zone, the addon has to learn the map's size:
+  just run around for a few seconds. It remembers each zone after that.
+  `/rg map` shows whether it's ready.
+- In arenas the map gives no position, so the number comes from the
+  checkpoints and speeds only.
 
 ## 4. The lights (the default view)
 
@@ -83,7 +99,8 @@ One row per enemy you care about:
 - Names are in class colors. "F" = focus, "A1"-"A5" = arena enemies.
 - Your focus only gets its own row when it's not also your target.
 - Arena rows only appear in arena.
-- Checked 20 times per second.
+- Checked 30 times per second; the in/out-of-range part every frame, so the
+  click comes the instant they cross.
 
 ## 5. The bar (optional second view)
 
@@ -121,7 +138,9 @@ Same colors, labels, yards, flash and click as the lights.
 | `/rg unmute` | turn the click back on                                    |
 | `/rg sound`  | switch the click on/off (same as above, one command)      |
 | `/rg debug`  | print every range check on your target (for fixing things)|
-| `/rg live`   | print the bar's tracking for 10 seconds (for fixing things)|
+| `/rg live`   | print your target's tracking for 10 seconds (for fixing things)|
+| `/rg verify` | 60 s check that every range checkpoint answers at its distance |
+| `/rg map`    | show whether your map position is ready                   |
 
 ## 7. Everyday use
 
@@ -148,7 +167,12 @@ Can't find it: `/rg reset`
   dummies also work.
 
 **It doesn't seem to work on my other characters**
-- Version 0.3 is set up for Hunters only. Other classes are planned.
+- Version 0.4 is set up for Hunters only. Other classes are planned.
 
 **Something looks wrong**
 - Target an enemy, type `/rg debug`, and screenshot the chat.
+
+**The number jumps at one particular distance**
+- Target a training dummy, type `/rg verify`, and walk slowly from melee
+  range out to 60+ yards and back within the minute. It lists any checkpoint
+  that never answers or answers at the wrong distance. Screenshot the result.

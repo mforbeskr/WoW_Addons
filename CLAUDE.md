@@ -19,6 +19,9 @@ Addons must run well on weak PCs:
 - Smallest textures that look right (32-64px, power of two).
 - No libraries like Ace3 unless clearly needed.
 - Keep SavedVariables small.
+- Exception: RangeGauge is tuned for max quality, not min cost (owner's call): 30 full
+  checks/s + melee/reach answer every frame, and a particle filter per shown unit.
+  It must still stop when idle (no units shown).
 
 ## Addons
 - **BambooBags** - bag/bank replacement. Bamboo frame textures in `textures/`
@@ -31,8 +34,11 @@ Addons must run well on weak PCs:
 - **RangeGauge** (`/rg`) - live range to target/focus/arena1-5 vs. your Auto Shot reach
   (Hunter only so far; +Hawk Eye). Range lights (default) or vertical bar (`/rg bar`),
   color zones MELEE/NEAR/GOOD/MAX | ALMOST/OUT/FAR, flash + click on zone change.
-  Distance = band from yes/no spell/item/interact checks (`Checks.lua`), smoothed into
-  live yards (`Tracker.lua`). User guide: `RangeGauge/GUIDE.md`.
+  Distance: robust band from yes/no spell/item/interact checks (`Checks.lua`); `Tracker.lua`
+  blends a speed-bounded band tracker (GetUnitSpeed) with a map particle filter (your map
+  position, `Locator.lua`, map size self-calibrated from run speed, saved per map).
+  `/rg verify` checks item ranges in game. Python simulator for tuning: `RangeGauge/tools/sim/`
+  (`python bench.py`; mirrors the Lua, keep both in sync). User guide: `RangeGauge/GUIDE.md`.
 
 Ideas and to-dos: `BACKLOG.md`.
 

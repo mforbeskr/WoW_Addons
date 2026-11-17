@@ -39,20 +39,28 @@ local function Gradient(stops, yards)
   return unpack(stops[#stops][2])
 end
 
+-- Stop lists built once; only the yards that depend on your reach are refreshed per call
+local insideStops = {
+  { ns.MELEE_YARDS, NEAR },
+  { ns.MELEE_YARDS + NEAR_YARDS, GOOD },
+  { 0, GOOD },
+  { 0, MAX },
+}
+local outsideStops = {
+  { 0, OUT_NEAR },
+  { 0, OUT_FAR },
+}
+
 local function InsideColor(yards)
-  return Gradient({
-    { ns.MELEE_YARDS, NEAR },
-    { ns.MELEE_YARDS + NEAR_YARDS, GOOD },
-    { ns.reachYards - MAX_YARDS, GOOD },
-    { ns.reachYards, MAX },
-  }, yards)
+  insideStops[3][1] = ns.reachYards - MAX_YARDS
+  insideStops[4][1] = ns.reachYards
+  return Gradient(insideStops, yards)
 end
 
 local function OutsideColor(yards)
-  return Gradient({
-    { ns.reachYards, OUT_NEAR },
-    { math.max(FAR_YARDS, ns.reachYards + ALMOST_YARDS + 4), OUT_FAR },
-  }, yards)
+  outsideStops[1][1] = ns.reachYards
+  outsideStops[2][1] = math.max(FAR_YARDS, ns.reachYards + ALMOST_YARDS + 4)
+  return Gradient(outsideStops, yards)
 end
 
 -- Color for a distance alone; used to paint the bar's scale
@@ -63,11 +71,15 @@ function ns.ScaleColor(yards)
 end
 
 -- Picks the state from the zone (exact) and the band (rough yards)
-function ns.StateFor(lo, hi, zone)
-  if zone == "reach" and lo >= ns.reachYards - MAX_YARDS then return "edge" end
-  if zone == "reach" and hi and hi <= ns.MELEE_YARDS + NEAR_YARDS then return "near" end
-  if zone == "out" and hi and hi <= ns.reachYards + ALMOST_YARDS then return "almost" end
-  if zone == "out" and lo >= FAR_YARDS then return "far" end
+-- The zone is exact; inside it, the live yards pick the label, so label and number always agree
+function ns.StateFor(zone, yards)
+  if zone == "reach" then
+    if yards >= ns.reachYards - MAX_YARDS then return "edge" end
+    if yards <= ns.MELEE_YARDS + NEAR_YARDS then return "near" end
+  elseif zone == "out" then
+    if yards <= ns.reachYards + ALMOST_YARDS then return "almost" end
+    if yards >= FAR_YARDS then return "far" end
+  end
   return zone
 end
 
@@ -85,6 +97,43 @@ end
 -- Did the unit step into or out of a zone (melee / reach / out)? Unknown readings don't count.
 function ns.ZoneChanged(old, new)
   return old ~= nil and old ~= new and old ~= "unknown" and new ~= "unknown"
+end
+
+-- Slow "breathing" glow run by the game's animation system, so it costs no Lua per frame.
+-- Pulses the alpha between low and high, about once every 2 seconds.
+function ns.Breathe(tex, low, high)
+  tex:SetAlpha(low)
+  if not tex.CreateAnimationGroup then return end -- no animations: just a steady glow
+  local ag = tex:CreateAnimationGroup()
+  local a = ag:CreateAnimation("Alpha")
+  a:SetChange(high - low)
+  a:SetDuration(1.05)
+  a:SetSmoothing("IN_OUT")
+  ag:SetLooping("BOUNCE")
+  ag:Play()
+  tex.breathing = ag
+end
+
+-- Sets "24 yd", "40+ yd" or "" on a font string, only when the shown value actually changes
+-- (no new strings every frame). `cache` is any table owned by the caller.
+function ns.SetYardsText(fs, cache, t)
+  local key
+  if t.zone == "melee" then
+    key = -1
+  elseif not t.hi then
+    key = 1000 + t.lo
+  else
+    key = math.floor(t.display + 0.5)
+  end
+  if key == cache.yardsKey then return end
+  cache.yardsKey = key
+  if key == -1 then
+    fs:SetText("")
+  elseif key >= 1000 then
+    fs:SetText(t.lo .. "+ yd")
+  else
+    fs:SetText(key .. " yd")
+  end
 end
 
 -- The click both views play for your target (/rg sound turns it off)

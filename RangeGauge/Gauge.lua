@@ -8,7 +8,7 @@ local BAR_HEIGHT = 220
 local BAR_WIDTH = 10
 local SCALE_PAST_REACH = 10   -- yards shown above the reach line
 local TICK_YARDS = 5          -- a small tick mark every 5 yards
-local UPDATE_INTERVAL = 0.05  -- 20 checks per second, same as the lights
+local UPDATE_INTERVAL = 0.033 -- 30 full checks per second, same as the lights (on purpose)
 local FADE_SPEED = 6          -- how fast the bar fades in and out
 local FLASH_DECAY = 2.5       -- how fast the reach line flash dies down
 
@@ -44,6 +44,7 @@ local reachLine = bar:CreateTexture(nil, "OVERLAY")
 reachLine:SetTexture(1, 1, 1, 0.9)
 reachLine:SetWidth(BAR_WIDTH + 16)
 reachLine:SetHeight(2)
+reachLine:SetAlpha(0.6)
 local reachText = bar:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 reachText:SetPoint("RIGHT", reachLine, "LEFT", -2, 0)
 
@@ -60,6 +61,7 @@ markerGlow:SetBlendMode("ADD")
 markerGlow:SetWidth(BAR_WIDTH + 44)
 markerGlow:SetHeight(26)
 markerGlow:SetPoint("CENTER")
+ns.Breathe(markerGlow, 0.3, 0.6)
 local markerTex = marker:CreateTexture(nil, "OVERLAY")
 markerTex:SetAllPoints()
 markerTex:SetTexture(1, 1, 1)
@@ -123,18 +125,23 @@ end
 
 -- Measuring and the marker -----------------------------------------------------------
 
-local tracker = ns.NewTracker()
+local tracker = ns.NewTracker(400)
 local state = "unknown"
 local lastZone            -- to notice the target stepping into another zone
+local lastKey             -- last melee/reach answer; checked every frame for an instant click
 local flash = 0           -- 1 right after a change, fades to 0
 local targetAlpha = 0     -- 1 = fading in, 0 = fading out
+local fading = false      -- only touch the alpha while a fade is in progress
+local dirty = true        -- the reading changed: repaint even if the marker didn't move
+local textCache = {}      -- what the yards text currently shows
 local sinceUpdate = 0
 
 -- fresh = a new target: start fresh instead of treating it as movement
 local function Measure(fresh)
-  local lo, hi, zone = ns.Measure("target")
-  tracker:Read(lo, hi, zone, fresh)
-  state = ns.StateFor(lo, hi, zone)
+  local lo, hi, zone, key = ns.Measure("target")
+  lastKey = key
+  if tracker:Read("target", lo, hi, zone, fresh) then dirty = true end
+  if fresh then state = nil end
 
   if not fresh and ns.ZoneChanged(lastZone, zone) then
     flash = 1
@@ -150,44 +157,58 @@ end
 
 g:SetScript("OnUpdate", function(self, elapsed)
   sinceUpdate = sinceUpdate + elapsed
-  if sinceUpdate >= UPDATE_INTERVAL and UnitExists("target") then
-    sinceUpdate = 0
-    Measure()
+  if UnitExists("target") then
+    -- Melee/reach answer changed? Measure right now, so the click is never late.
+    if sinceUpdate >= UPDATE_INTERVAL or ns.RawKey("target") ~= lastKey then
+      sinceUpdate = 0
+      Measure()
+    end
   end
 
-  -- Live distance, glided on a spring (see Tracker.lua)
-  tracker:Step(elapsed)
-  local yards = tracker.zone == "melee" and ns.MELEE_YARDS / 2 or tracker.display
+  -- Fade in or out; fully faded out = hide (which also stops this OnUpdate)
+  if fading then
+    local alpha = Approach(self:GetAlpha(), targetAlpha, FADE_SPEED, elapsed)
+    if targetAlpha == 0 and alpha < 0.02 then
+      fading = false
+      self:Hide()
+      return
+    elseif targetAlpha == 1 and alpha > 0.98 then
+      fading = false
+      alpha = 1
+    end
+    self:SetAlpha(alpha)
+  end
+
+  -- Reach line flash: brighter and a bit wider, then settles back
+  if flash > 0 then
+    flash = math.max(0, flash - elapsed * FLASH_DECAY)
+    reachLine:SetAlpha(0.6 + 0.4 * flash)
+    reachLine:SetWidth(BAR_WIDTH + 16 + 14 * flash)
+  end
+
+  -- Live distance (see Tracker.lua). Unchanged = nothing to do.
+  if not tracker:Step(elapsed) and not dirty then return end
+  dirty = false
+
+  local yards = tracker.display
+  if tracker.zone == "melee" then yards = math.min(yards, ns.MELEE_YARDS) end
   marker:SetPoint("CENTER", bar, "BOTTOM", 0, YardsToY(yards))
 
+  local newState = ns.StateFor(tracker.zone, tracker.display)
+  if newState ~= state then
+    state = newState
+    statusText:SetText(ns.STATE_TEXT[state])
+  end
   local r, gr, b = ns.StateColor(state, tracker.display)
   markerTex:SetVertexColor(r, gr, b)
   markerGlow:SetVertexColor(r, gr, b)
-  statusText:SetText(ns.STATE_TEXT[state])
   statusText:SetTextColor(r, gr, b)
-  if tracker.zone == "melee" then
-    yardsText:SetText("")
-  elseif not tracker.hi then
-    yardsText:SetText(tracker.lo .. "+ yd")
-  else
-    yardsText:SetText(math.floor(tracker.display + 0.5) .. " yd")
-  end
+  ns.SetYardsText(yardsText, textCache, tracker)
+end)
 
-  -- Slow breathing glow, a little brighter during a flash
-  markerGlow:SetAlpha(0.45 + 0.15 * math.sin(GetTime() * 3) + 0.4 * flash)
-
-  -- Reach line flash: brighter and a bit wider, then settles back
-  flash = math.max(0, flash - elapsed * FLASH_DECAY)
-  reachLine:SetAlpha(0.6 + 0.4 * flash)
-  reachLine:SetWidth(BAR_WIDTH + 16 + 14 * flash)
-
-  -- Fade in or out; fully faded out = hide (which also stops this OnUpdate)
-  local alpha = Approach(self:GetAlpha(), targetAlpha, FADE_SPEED, elapsed)
-  if targetAlpha == 0 and alpha < 0.02 then
-    self:Hide()
-  else
-    self:SetAlpha(alpha)
-  end
+-- The glow's breathing animation; make sure it runs whenever the bar appears
+g:SetScript("OnShow", function()
+  if markerGlow.breathing then markerGlow.breathing:Play() end
 end)
 
 -- The bar is the optional view (/rg bar); the default view is the lights in Lights.lua
@@ -195,11 +216,14 @@ local function OnTargetChanged()
   if RangeGaugeDB.mode == "bar" and UnitExists("target") and not UnitIsUnit("target", "player") then
     if not g:IsShown() then g:SetAlpha(0) end
     targetAlpha = 1
+    fading = true
+    dirty = true
     g:Show()
     lastZone = nil
     Measure(true)
   else
     targetAlpha = 0
+    fading = true
   end
 end
 
@@ -208,6 +232,7 @@ end
 local function ApplyLock()
   g:EnableMouse(not RangeGaugeDB.locked)
   ns.lights:EnableMouse(not RangeGaugeDB.locked)
+  ns.WakeLights() -- show or hide the "drag me" box
 end
 
 local function RestorePosition()
@@ -249,6 +274,26 @@ events:SetScript("OnEvent", function(self, event, arg1)
   end
 end)
 
+-- /rg live: prints your target's tracker twice per second for 10 seconds, to see what it's doing.
+-- One frame, reused; hidden (and so idle) when not printing.
+local liveTicker = CreateFrame("Frame")
+liveTicker:Hide()
+liveTicker:SetScript("OnUpdate", function(self, elapsed)
+  self.since = self.since + elapsed
+  if self.since < 0.5 then return end
+  self.since = 0
+  self.ticks = self.ticks + 1
+  local t = RangeGaugeDB.mode == "bar" and tracker or ns.LightsTracker("target")
+  if t and UnitExists("target") then
+    ns.Print(string.format("band %s-%s %s | shown %.1f yd | %s | moving %.1f yd/s (you %.1f, target %.1f)",
+      t.lo, t.hi or "?", t.zone, t.display, t.mode, t.speed,
+      GetUnitSpeed("player") or 0, GetUnitSpeed("target") or 0))
+  else
+    ns.Print("no target.")
+  end
+  if self.ticks >= 20 then self:Hide() end
+end)
+
 SLASH_RANGEGAUGE1 = "/rg"
 SlashCmdList["RANGEGAUGE"] = function(msg)
   if msg == "lock" then
@@ -267,6 +312,7 @@ SlashCmdList["RANGEGAUGE"] = function(msg)
   elseif msg == "bar" or msg == "lights" then
     RangeGaugeDB.mode = msg
     OnTargetChanged()
+    ns.WakeLights()
     ns.Print(msg == "bar" and "showing the range bar." or "showing the range lights.")
   elseif msg == "sound" or msg == "mute" or msg == "unmute" then
     if msg == "mute" then
@@ -280,20 +326,14 @@ SlashCmdList["RANGEGAUGE"] = function(msg)
   elseif msg == "debug" then
     ns.Debug("target")
   elseif msg == "live" then
-    -- Prints the bar's tracker twice per second for 10 seconds, to see what it's doing
-    local ticks = 0
-    local ticker = CreateFrame("Frame")
-    local since = 0
-    ticker:SetScript("OnUpdate", function(self, elapsed)
-      since = since + elapsed
-      if since < 0.5 then return end
-      since = 0
-      ticks = ticks + 1
-      ns.Print(string.format("band %s-%s %s | estimate %.1f yd | speed %.1f yd/s",
-        tracker.lo, tracker.hi or "?", tracker.zone, tracker.estimate, tracker.speed))
-      if ticks >= 20 then self:SetScript("OnUpdate", nil) end
-    end)
+    liveTicker.ticks, liveTicker.since = 0, 0
+    liveTicker:Show()
+  elseif msg == "verify" then
+    ns.StartVerify(60)
+  elseif msg == "map" then
+    ns.Print("map position: " .. ns.LocatorStatus())
   else
-    ns.Print("/rg lock, /rg unlock, /rg reset, /rg lights, /rg bar, /rg mute, /rg unmute, /rg debug, /rg live")
+    ns.Print("/rg lock, /rg unlock, /rg reset, /rg lights, /rg bar, /rg mute, /rg unmute, " ..
+      "/rg debug, /rg live, /rg verify, /rg map")
   end
 end
