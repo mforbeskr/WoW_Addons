@@ -1,13 +1,15 @@
 # Gear Optimizer - how to
 
 1. Visit your bank once per character so bank gear is included.
-2. Type `/gopt`. Each row shows what you wear and the best item you own for that slot,
-   with the score gain. Hover an item for its tooltip.
-3. **Equip from bags** puts on the suggested bag items. Items marked `(bank)` you fetch
-   yourself; `(swap)` means move one of your own items (e.g. weapon to the other hand).
-4. Like it? Save it in Blizzard's Equipment Manager (character window).
+2. `/gopt`, pick your build at the top (remembered per character): **On-hit** or **Spellhance**.
+3. Press **Find best Raid build** (bosses) or, on Spellhance, **Find best AOE build**
+   (dungeons, trash packs). Nothing is calculated until you press one.
+4. Each row: what you wear > what to wear instead. Green rows change, the rest say "same".
+   `(bank)` = in the bank, `(other slot)` = one of your own items moves (e.g. other hand).
+5. **Equip all changes** does it in one click (with the bank open it fetches bank items too).
+   Then **Save as "Opt Raid"** / **"Opt AOE"** for one-click swaps in the Equipment Manager.
 
-- So far: Enhancement Shaman PvE. Weights are in `Core.lua` (`PROFILES`), easy to tweak.
-- Hit and expertise count less once you're over the cap (shown under the score).
-- Not counted: enchants, socket/set bonuses, Equip/Use effects. Trinkets and totem are kept.
-- Your saved Equipment Manager sets are scored too, for comparison.
+- Counts stats, gems, weapon DPS, trinket and totem effects, and tier set bonuses.
+  `~` = estimated (an effect or bonus it can't read).
+- Hit and expertise count less past their cap; the caps follow your talents and race.
+- Not counted: enchants, socket bonuses. Weights per build are in `Core.lua` (`PROFILES`).
