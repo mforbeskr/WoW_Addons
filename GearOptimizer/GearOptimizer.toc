@@ -1,0 +1,8 @@
+## Interface: 30300
+## Title: Gear Optimizer
+## Notes: Picks the best gear you own for a purpose (Enhancement Shaman PvE so far). /gopt
+## Version: 0.1
+## SavedVariablesPerCharacter: GearOptimizerCharDB
+
+Core.lua
+UI.lua

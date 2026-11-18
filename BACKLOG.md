@@ -113,7 +113,7 @@ Next ideas:
 
 ---
 
-## Gear optimizer (idea, added 2026-11-18)
+## Gear optimizer (v0.1 built 2026-11-18 for Enhancement Shaman, `/gopt`)
 
 An addon that builds the best gear set from what you own for different purposes, e.g.
 healing PvE, healing PvP (resilience), damage, solo/farming. As lightweight as possible.

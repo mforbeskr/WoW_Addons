@@ -56,6 +56,28 @@ local function BuildText()
     if line then table.insert(out, slotName .. ": " .. line) end
   end
 
+  -- Sets saved in Blizzard's Equipment Manager (item names only; gems/enchants aren't stored)
+  local numSets = GetNumEquipmentSets and GetNumEquipmentSets() or 0
+  if numSets > 0 then
+    table.insert(out, "")
+    table.insert(out, "== EQUIPMENT MANAGER SETS ==")
+    for i = 1, numSets do
+      local setName = GetEquipmentSetInfo(i)
+      local ids = setName and GetEquipmentSetItemIDs(setName)
+      if ids then
+        local names = {}
+        for _, slotName in ipairs(SLOTS) do
+          local id = ids[GetInventorySlotInfo(slotName)]
+          if id and id > 0 then
+            local itemName, _, _, ilvl = GetItemInfo(id)
+            table.insert(names, string.format("%s (%s)", itemName or ("item " .. id), ilvl or "?"))
+          end
+        end
+        table.insert(out, setName .. ": " .. table.concat(names, ", "))
+      end
+    end
+  end
+
   table.insert(out, "")
   table.insert(out, "== BAGS ==")
   DumpBags(out, 0, NUM_BAG_SLOTS)

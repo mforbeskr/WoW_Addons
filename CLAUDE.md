@@ -36,7 +36,12 @@ Addons must run well on weak PCs:
   free-slot counter, sell-grey-junk button at vendors (skips items moved to Outfits),
   bank bag slot row + buy-slot button in the bank window, Alt+click moves items
   between sections, movable windows with saved positions.
-- **GearDump** - exports equipped/bag/bank items (ilvl, ID, enchants, gems) as text.
+- **GearDump** - exports equipped/bag/bank items (ilvl, ID, enchants, gems) and saved Equipment
+  Manager sets as text.
+- **GearOptimizer** (`/gopt`) - best gear you own per purpose (v0.1: Enhancement Shaman PvE).
+  Scores GetItemStats + gem stats x weights (`Core.lua` PROFILES), weapon DPS per hand, empty
+  sockets as gemmed; hit/expertise worth less past their cap (bisection on their weight, keeps the
+  best capped set). Trinkets/totem kept. Bank remembered per character. Only runs when opened.
 - **RangeGauge** (`/rg`) - live range to target/focus/party1-4/arena1-5 vs. your reach line.
   Per-class profiles in `Checks.lua`: enemy (Hunter Auto Shot +Hawk Eye; Priest SW:P +Shadow Reach)
   and ally (Priest Flash Heal 40 yd, "heal" color style, party rows, `/rg party`). Rows are
