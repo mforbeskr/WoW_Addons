@@ -1105,6 +1105,12 @@ events:RegisterEvent("BANKFRAME_OPENED")
 events:RegisterEvent("BANKFRAME_CLOSED")
 events:RegisterEvent("MERCHANT_SHOW")
 events:RegisterEvent("MERCHANT_CLOSED")
+-- Other windows that use your bags: open ours with them, and close it again if they opened it
+local OPEN_WITH = { GUILDBANKFRAME_OPENED = true, MAIL_SHOW = true, AUCTION_HOUSE_SHOW = true, TRADE_SHOW = true }
+local CLOSE_WITH = { GUILDBANKFRAME_CLOSED = true, MAIL_CLOSED = true, AUCTION_HOUSE_CLOSED = true, TRADE_CLOSED = true }
+local autoOpened = false
+for e in pairs(OPEN_WITH) do events:RegisterEvent(e) end
+for e in pairs(CLOSE_WITH) do events:RegisterEvent(e) end
 events:RegisterEvent("CURRENCY_DISPLAY_UPDATE")
 events:RegisterEvent("HONOR_CURRENCY_UPDATE")
 events:RegisterEvent("PLAYER_ENTERING_WORLD")
@@ -1140,6 +1146,14 @@ events:SetScript("OnEvent", function(self, event, arg1)
     sellButton:Hide()
     bagsWindow.extraFooter = nil
     bagsWindow.dirty = true
+  elseif OPEN_WITH[event] then
+    if not bagsWindow.frame:IsShown() then
+      autoOpened = true
+      bagsWindow.frame:Show()
+    end
+  elseif CLOSE_WITH[event] then
+    if autoOpened then bagsWindow.frame:Hide() end
+    autoOpened = false
   elseif event == "PLAYER_MONEY" then
     bagsWindow:UpdateMoney()
   else
