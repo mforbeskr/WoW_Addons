@@ -1111,6 +1111,30 @@ local CLOSE_WITH = { GUILDBANKFRAME_CLOSED = true, MAIL_CLOSED = true, AUCTION_H
 local autoOpened = false
 for e in pairs(OPEN_WITH) do events:RegisterEvent(e) end
 for e in pairs(CLOSE_WITH) do events:RegisterEvent(e) end
+-- Other bag addons also open their own windows; offer at login to turn them off (No = never ask again)
+local OTHER_BAG_ADDONS = { "Bagnon", "Combuctor", "ArkInventory", "OneBag3", "AdiBags", "Baggins" }
+StaticPopupDialogs["BAMBOOBAGS_CONFLICT"] = {
+  text = "Bamboo Bags: %s is also enabled, so two bag windows will open.\nTurn %s off and reload?",
+  button1 = YES, button2 = NO,
+  OnAccept = function(self)
+    for _, name in ipairs(OTHER_BAG_ADDONS) do
+      if IsAddOnLoaded(name) then DisableAddOn(name) end
+    end
+    ReloadUI()
+  end,
+  OnCancel = function() BambooBagsDB.allowOthers = true end,
+  timeout = 0, whileDead = true, hideOnEscape = true,
+}
+local function CheckOtherBagAddons()
+  if BambooBagsDB.allowOthers then return end
+  for _, name in ipairs(OTHER_BAG_ADDONS) do
+    if IsAddOnLoaded(name) then
+      StaticPopup_Show("BAMBOOBAGS_CONFLICT", name, name)
+      return
+    end
+  end
+end
+events:RegisterEvent("PLAYER_LOGIN")
 events:RegisterEvent("CURRENCY_DISPLAY_UPDATE")
 events:RegisterEvent("HONOR_CURRENCY_UPDATE")
 events:RegisterEvent("PLAYER_ENTERING_WORLD")
@@ -1127,6 +1151,8 @@ events:SetScript("OnEvent", function(self, event, arg1)
     elseif arg1 == "Blizzard_TokenUI" then
       HookTokenUpdates()
     end
+  elseif event == "PLAYER_LOGIN" then
+    CheckOtherBagAddons()
   elseif event == "PLAYER_ENTERING_WORLD" or event == "UI_SCALE_CHANGED" or event == "DISPLAY_SIZE_CHANGED" then
     UpdatePixelSize()
   elseif event == "CURRENCY_DISPLAY_UPDATE" or event == "HONOR_CURRENCY_UPDATE" then
