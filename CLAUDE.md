@@ -33,8 +33,9 @@ Addons must run well on weak PCs:
   bank bag slot row + buy-slot button in the bank window, Alt+click moves items
   between sections, movable windows with saved positions.
 - **GearDump** - exports equipped/bag/bank items (ilvl, ID, enchants, gems) as text.
-- **RangeGauge** (`/rg`) - live range to target/focus/arena1-5 vs. your Auto Shot reach
-  (Hunter only so far; +Hawk Eye). Range lights (default) or vertical bar (`/rg bar`),
+- **RangeGauge** (`/rg`) - live range to target/focus/party1-4/arena1-5 vs. your reach line.
+  Per-class profiles in `Checks.lua`: enemy (Hunter Auto Shot +Hawk Eye; Priest SW:P +Shadow Reach)
+  and ally (Priest Flash Heal 40 yd, "heal" color style, party rows, `/rg party`). Range lights (default) or vertical bar (`/rg bar`),
   color zones MELEE/NEAR/GOOD/MAX | ALMOST/OUT/FAR, flash + click on zone change.
   Distance: robust band from yes/no spell/item/interact checks (`Checks.lua`); `Tracker.lua`
   blends a speed-bounded band tracker (GetUnitSpeed) with a map particle filter (your map

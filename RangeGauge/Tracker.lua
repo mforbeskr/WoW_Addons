@@ -62,7 +62,7 @@ Tracker.__index = Tracker
 function ns.NewTracker(particles)
   local n = particles or 300
   return setmetatable({
-    lo = 0, zone = "out", bLo = 0, bHi = FAR,
+    lo = 0, zone = "out", bLo = 0, bHi = FAR, reach = 5,
     a = 0, b = FAR, est1 = 0, frac = 0, still = 0,
     estimate = 0, speed = 0, display = 0, off = 0, offVel = 0,
     n = n, px = {}, py = {}, pk = {}, ph = {}, pw = {},
@@ -126,7 +126,7 @@ end
 -- A new reading: guesses that don't fit the band (seen from where you stand) lose weight
 function Tracker:PfUpdate(lo, hi, x0, y0)
   local px, py, pk, pw, n = self.px, self.py, self.pk, self.pw, self.n
-  local R = ns.reachYards
+  local R = self.reach
   local sLo = lo == R and SIG_REACH or SIG_BAND
   local sHi = hi == R and SIG_REACH or SIG_BAND
   local total = 0
@@ -184,14 +184,16 @@ end
 -- Readings ---------------------------------------------------------------------------------
 
 -- Feed a new reading. hi = nil means beyond every check. fresh = a new unit: start over.
+-- reach = the reach line used for this unit (attack or heal range, see Checks.lua).
 -- Returns true when the reading differs from the last one.
-function Tracker:Read(unit, lo, hi, zone, fresh)
+function Tracker:Read(unit, lo, hi, zone, fresh, reach)
   local changed = fresh or lo ~= self.lo or hi ~= self.hi or zone ~= self.zone
   self.unit, self.lo, self.hi, self.zone = unit, lo, hi, zone
+  self.reach = reach or ns.reachYards
   local now = GetTime()
 
   -- The band in yards, tightened by the exact reach line
-  local R = ns.reachYards
+  local R = self.reach
   local bLo, bHi = lo, hi or FAR
   if zone == "melee" then
     bLo = 0
@@ -313,7 +315,7 @@ function Tracker:Step(dt)
 
   -- Never contradict the band or the exact reach line
   local lo, hi = self.bLo, self.bHi
-  local R = ns.reachYards
+  local R = self.reach
   if self.zone == "reach" then
     hi = min(hi, R - 0.05)
   elseif self.zone == "out" then

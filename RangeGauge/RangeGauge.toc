@@ -1,7 +1,7 @@
 ## Interface: 30300
 ## Title: |cffc77dffRange|r Gauge
-## Notes: Vertical range bar to your target with an auto-attack reach line. /rg
-## Version: 0.4
+## Notes: Live range to enemies (attack range) and allies (heal range). /rg
+## Version: 0.5
 ## SavedVariables: RangeGaugeDB
 
 Checks.lua

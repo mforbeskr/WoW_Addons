@@ -74,15 +74,20 @@ statusText:SetPoint("LEFT", yardsText, "RIGHT", 4, 0)
 
 local scaleTop = 45
 local slices, ticks = {}, {}
+local shownProfile -- the profile the scale is painted for (enemy or ally colors)
 
 local function YardsToY(yards)
   return math.max(0, math.min(yards, scaleTop)) / scaleTop * BAR_HEIGHT
 end
 
 -- Paints the scale with the same colors as the lights, as 1-yard gradient slices,
--- and puts a tick every TICK_YARDS. Re-run when the reach changes (Hawk Eye).
-local function Layout()
-  scaleTop = ns.reachYards + SCALE_PAST_REACH
+-- and puts a tick every TICK_YARDS. Re-run when the reach changes (talents) or the target
+-- switches between enemy and ally (attack range vs. heal range).
+local function Layout(profile)
+  profile = profile or shownProfile or ns.DefaultProfile()
+  shownProfile = profile
+  local reach, style = profile.reach, profile.style
+  scaleTop = reach + SCALE_PAST_REACH
 
   local count = math.ceil(scaleTop)
   for i = 1, count do
@@ -95,8 +100,8 @@ local function Layout()
     end
     local y0, y1 = i - 1, math.min(i, scaleTop)
     -- Colors just inside each end, so the hard switches (melee, reach) stay sharp
-    local r1, g1, b1 = ns.ScaleColor(y0 + 0.01)
-    local r2, g2, b2 = ns.ScaleColor(y1 - 0.01)
+    local r1, g1, b1 = ns.ScaleColor(y0 + 0.01, reach, style)
+    local r2, g2, b2 = ns.ScaleColor(y1 - 0.01, reach, style)
     s:SetGradientAlpha("VERTICAL", r1, g1, b1, 0.45, r2, g2, b2, 0.45)
     s:SetHeight(math.max(YardsToY(y1) - YardsToY(y0), 0.01))
     s:SetPoint("BOTTOM", bar, "BOTTOM", 0, YardsToY(y0))
@@ -119,8 +124,8 @@ local function Layout()
   end
   for i = tickCount + 1, #ticks do ticks[i]:Hide() end
 
-  reachLine:SetPoint("CENTER", bar, "BOTTOM", 0, YardsToY(ns.reachYards))
-  reachText:SetText(ns.reachYards)
+  reachLine:SetPoint("CENTER", bar, "BOTTOM", 0, YardsToY(reach))
+  reachText:SetText(reach)
 end
 
 -- Measuring and the marker -----------------------------------------------------------
@@ -138,9 +143,13 @@ local sinceUpdate = 0
 
 -- fresh = a new target: start fresh instead of treating it as movement
 local function Measure(fresh)
-  local lo, hi, zone, key = ns.Measure("target")
+  local lo, hi, zone, key, profile = ns.Measure("target")
   lastKey = key
-  if tracker:Read("target", lo, hi, zone, fresh) then dirty = true end
+  if profile ~= shownProfile then
+    Layout(profile)
+    fresh = true
+  end
+  if tracker:Read("target", lo, hi, zone, fresh, profile.reach) then dirty = true end
   if fresh then state = nil end
 
   if not fresh and ns.ZoneChanged(lastZone, zone) then
@@ -194,12 +203,13 @@ g:SetScript("OnUpdate", function(self, elapsed)
   if tracker.zone == "melee" then yards = math.min(yards, ns.MELEE_YARDS) end
   marker:SetPoint("CENTER", bar, "BOTTOM", 0, YardsToY(yards))
 
-  local newState = ns.StateFor(tracker.zone, tracker.display)
+  local p = shownProfile
+  local newState = ns.StateFor(tracker.zone, tracker.display, p.reach, p.style)
   if newState ~= state then
     state = newState
-    statusText:SetText(ns.STATE_TEXT[state])
+    statusText:SetText(ns.StateText(state, p.style))
   end
-  local r, gr, b = ns.StateColor(state, tracker.display)
+  local r, gr, b = ns.StateColor(state, tracker.display, p.reach, p.style)
   markerTex:SetVertexColor(r, gr, b)
   markerGlow:SetVertexColor(r, gr, b)
   statusText:SetTextColor(r, gr, b)
@@ -268,7 +278,7 @@ events:SetScript("OnEvent", function(self, event, arg1)
   elseif event == "PLAYER_TARGET_CHANGED" then
     OnTargetChanged()
   else
-    -- Talents changed: Hawk Eye may have changed the reach
+    -- Talents changed: Hawk Eye / Shadow Reach / Holy Reach may have changed the reach
     ns.UpdateReach()
     Layout()
   end
@@ -330,10 +340,14 @@ SlashCmdList["RANGEGAUGE"] = function(msg)
     liveTicker:Show()
   elseif msg == "verify" then
     ns.StartVerify(60)
+  elseif msg == "party" then
+    RangeGaugeDB.party = RangeGaugeDB.party == false
+    ns.WakeLights()
+    ns.Print(RangeGaugeDB.party and "showing your group's rows." or "group rows hidden.")
   elseif msg == "map" then
     ns.Print("map position: " .. ns.LocatorStatus())
   else
     ns.Print("/rg lock, /rg unlock, /rg reset, /rg lights, /rg bar, /rg mute, /rg unmute, " ..
-      "/rg debug, /rg live, /rg verify, /rg map")
+      "/rg party, /rg debug, /rg live, /rg verify, /rg map")
   end
 end

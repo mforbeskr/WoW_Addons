@@ -1,8 +1,8 @@
 # Range Gauge - How to use
 
 Shows, live, whether your target (and focus, and arena enemies) is inside your
-Auto Shot range.
-Version 0.4 - made for Hunters (WoW 3.3.5a).
+Auto Shot range - or, on a Priest, whether your allies are inside your heal range.
+Version 0.5 - Hunters and Priests (WoW 3.3.5a). Priests: see section 4b.
 Two views of the same thing: range lights (default) and a range bar.
 
 ## 1. Install
@@ -102,6 +102,43 @@ One row per enemy you care about:
 - Checked 30 times per second; the in/out-of-range part every frame, so the
   click comes the instant they cross.
 
+## 4b. Priests: healing range on allies
+
+On a Priest the addon measures each unit with the right spells for it:
+
+- **Allies** (friendly target, focus, your party): your heal range. The exact
+  in/out line is Flash Heal's 40 yards (the same range as Renew, Power Word:
+  Shield and Greater Heal). Power Word: Fortitude and Dispel Magic (30 yd) and
+  friendly-usable items fill in the yards below that.
+- **Enemies**: Shadow Word: Pain's range (30 yd, +3 per point in Shadow
+  Reach), with Smite (+Holy Reach) and Mind Flay as extra checkpoints.
+
+Allies get a healer color scheme, like raid frames:
+
+| Color      | Label    | What it means                              |
+|------------|----------|--------------------------------------------|
+| soft green | IN RANGE | you can heal them                          |
+| gold       | EDGE     | last 7 yards of your range - about to lose them |
+| red-orange | OUT      | out of heal range                          |
+| dim wine   | FAR      | far away (50+ yd, or out of sight: "100+ yd") |
+
+```
+|[●] T  Tankname       31 yd  IN RANGE    <- green stripe = ally
+|[●] P1 Magename       38 yd  EDGE
+|[●] P2 Roguename      44 yd  OUT          <- name faded: you can't heal them
+|[●] F  Enemyname      24 yd  GOOD        <- red stripe = enemy
+ ▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔ thin line under an ally = their health
+```
+
+- Your group (party1-4, also your subgroup in a raid and your team in arena)
+  gets a row each, after your target and focus. Nobody gets two rows.
+  `/rg party` hides or shows the group rows.
+- Tags: T = target, F = focus, P1-P4 = party, A1-A5 = arena enemies.
+- The stripe on the left: green = ally, red = enemy, yellow = neutral.
+- Allies you can't heal fade out, so a glance shows who you'd lose.
+- The click and flash work the same: "on" = they came into heal range,
+  "off" = they left it.
+
 ## 5. The bar (optional second view)
 
 Type `/rg bar` to switch to a vertical bar with a moving marker, and
@@ -137,6 +174,7 @@ Same colors, labels, yards, flash and click as the lights.
 | `/rg mute`   | turn the click off                                        |
 | `/rg unmute` | turn the click back on                                    |
 | `/rg sound`  | switch the click on/off (same as above, one command)      |
+| `/rg party`  | hide/show your group's rows (Priests)                     |
 | `/rg debug`  | print every range check on your target (for fixing things)|
 | `/rg live`   | print your target's tracking for 10 seconds (for fixing things)|
 | `/rg verify` | 60 s check that every range checkpoint answers at its distance |
@@ -162,12 +200,12 @@ Can't find it: `/rg reset`
   enough when the addon gets new files.)
 
 **The light is grey with "?"**
-- Your target is friendly. Auto Shot and most range checks only work on
-  enemies. To test with a friend: duel them, then everything works. Training
-  dummies also work.
+- On a Hunter: your target is friendly. Auto Shot and most range checks only
+  work on enemies. To test with a friend: duel them, then everything works.
+  Training dummies also work. (Priests measure allies with their heals.)
 
 **It doesn't seem to work on my other characters**
-- Version 0.4 is set up for Hunters only. Other classes are planned.
+- Version 0.5 is set up for Hunters and Priests. Other classes are planned.
 
 **Something looks wrong**
 - Target an enemy, type `/rg debug`, and screenshot the chat.
