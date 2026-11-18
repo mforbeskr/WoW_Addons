@@ -305,7 +305,14 @@ liveTicker:SetScript("OnUpdate", function(self, elapsed)
 end)
 
 SLASH_RANGEGAUGE1 = "/rg"
+-- Commands that move, show or hide the (secure) range rows must wait until combat is over
+local LAYOUT_COMMANDS = { lock = true, unlock = true, reset = true, bar = true, lights = true, party = true }
+
 SlashCmdList["RANGEGAUGE"] = function(msg)
+  if LAYOUT_COMMANDS[msg] and InCombatLockdown() then
+    ns.Print("can't change the layout in combat, try again after the fight.")
+    return
+  end
   if msg == "lock" then
     RangeGaugeDB.locked = true
     ApplyLock()

@@ -24,10 +24,10 @@ Addons must run well on weak PCs:
   It must still stop when idle (no units shown).
 
 ## Addons
-- **BambooBags** (window title "Bags") - bag/bank replacement. Dark translucent grain panel
-  (`textures/grain.tga`, made by the PowerShell script in `tools/`; `/bb alpha 0.2-1`), crisp 1px
-  bevel edges, drop shadow, raised buttons, sunken search. The old bamboo/linen textures stay for
-  TransmogStudio. Footer shows the currencies ticked "Show on Backpack" (emblems, honor). Sections: Gear (ilvl 200+),
+- **BambooBags** (window title "Bags") - bag/bank replacement. Opaque bamboo frame around a
+  translucent dark hemp weave (`textures/weave.tga`, made by the PowerShell script in `tools/`;
+  `/bb alpha 0.2-1`), faint gold stitched section lines, drop shadow, raised buttons, sunken
+  search. linen.tga is still used by TransmogStudio. Footer shows the currencies ticked "Show on Backpack" (emblems, honor). Sections: Gear (ilvl 200+),
   Outfits (cosmetics/transmog), General. Search, sort, ilvl text, quality borders,
   free-slot counter, sell-grey-junk button at vendors (skips items moved to Outfits),
   bank bag slot row + buy-slot button in the bank window, Alt+click moves items
@@ -35,7 +35,8 @@ Addons must run well on weak PCs:
 - **GearDump** - exports equipped/bag/bank items (ilvl, ID, enchants, gems) as text.
 - **RangeGauge** (`/rg`) - live range to target/focus/party1-4/arena1-5 vs. your reach line.
   Per-class profiles in `Checks.lua`: enemy (Hunter Auto Shot +Hawk Eye; Priest SW:P +Shadow Reach)
-  and ally (Priest Flash Heal 40 yd, "heal" color style, party rows, `/rg party`). Range lights (default) or vertical bar (`/rg bar`),
+  and ally (Priest Flash Heal 40 yd, "heal" color style, party rows, `/rg party`). Rows are
+  SecureUnitButtons (mouseover macros, Clique); layout frozen in combat, re-sorted after. Range lights (default) or vertical bar (`/rg bar`),
   color zones MELEE/NEAR/GOOD/MAX | ALMOST/OUT/FAR, flash + click on zone change.
   Distance: robust band from yes/no spell/item/interact checks (`Checks.lua`); `Tracker.lua`
   blends a speed-bounded band tracker (GetUnitSpeed) with a map particle filter (your map

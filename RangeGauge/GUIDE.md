@@ -139,6 +139,26 @@ Allies get a healer color scheme, like raid frames:
 - The click and flash work the same: "on" = they came into heal range,
   "off" = they left it.
 
+### Mouseover macros on the rows
+
+Each row is a real unit button, so hovering it makes that unit your
+`mouseover`. Example macro:
+
+```
+#showtooltip
+/cast [@mouseover,help,nodead][] Flash Heal
+```
+
+- Left click a row to target that unit. Click-cast addons (Clique) can bind
+  spells to the rows too.
+- WoW doesn't let addons move, show or hide such buttons during combat. So
+  when a fight starts, each row that might be needed gets a fixed spot (empty
+  spots are invisible), and the rows only re-sort after the fight. Someone
+  who drops out mid-fight leaves an invisible gap instead of making the rows
+  below jump.
+- `/rg lock`, `unlock`, `reset`, `bar`, `lights` and `party` wait until you're
+  out of combat.
+
 ## 5. The bar (optional second view)
 
 Type `/rg bar` to switch to a vertical bar with a moving marker, and

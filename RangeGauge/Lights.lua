@@ -7,6 +7,12 @@
 -- stripe on the left (green = ally, red = enemy) and, for allies, a thin health line. Allies
 -- you can't heal fade out, like on raid frames.
 --
+-- Rows are real unit buttons (SecureUnitButtonTemplate): hovering one makes it your
+-- [@mouseover] unit, so mouseover macros and click-cast addons (Clique) work on them, and a left
+-- click targets the unit. WoW forbids moving, showing or hiding such buttons in combat, so as
+-- combat starts every row that could be needed gets a fixed slot (empty ones are invisible), and
+-- the rows only re-sort again after combat.
+--
 -- Performance: the update loop only runs while at least one row is shown. With nothing to
 -- watch it switches itself off, and events (target/focus/group/arena changes) switch it back on.
 -- Rows only repaint while their distance is moving or their reading changed.
@@ -38,12 +44,17 @@ frame:SetHeight(ROW_HEIGHT)
 frame:SetClampedToScreen(true)
 frame:SetMovable(true)
 frame:RegisterForDrag("LeftButton")
-frame:SetScript("OnDragStart", frame.StartMoving)
-frame:SetScript("OnDragStop", function(self)
-  self:StopMovingOrSizing()
-  local point, _, relPoint, x, y = self:GetPoint()
+
+local function StartDrag()
+  if not RangeGaugeDB.locked and not InCombatLockdown() then frame:StartMoving() end
+end
+local function StopDrag()
+  frame:StopMovingOrSizing()
+  local point, _, relPoint, x, y = frame:GetPoint()
   RangeGaugeDB.lightsPoint = { point, relPoint, x, y }
-end)
+end
+frame:SetScript("OnDragStart", StartDrag)
+frame:SetScript("OnDragStop", StopDrag)
 ns.lights = frame
 
 -- Shown while unlocked and nothing is targeted, so there's something to drag
@@ -60,11 +71,33 @@ local function RowOnShow(row)
   if row.glow.breathing then row.glow.breathing:Play() end
 end
 
-local function CreateRow(index)
-  local row = CreateFrame("Frame", nil, frame)
+local function RowOnEnter(row)
+  GameTooltip_SetDefaultAnchor(GameTooltip, row)
+  GameTooltip:SetUnit(row.token)
+  GameTooltip:Show()
+end
+
+local function RowOnLeave()
+  GameTooltip:Hide()
+end
+
+-- One row per unit token, created once at load (secure buttons can't be set up in combat)
+local function CreateRow(token)
+  local row = CreateFrame("Button", "RangeGaugeRow_" .. token, frame, "SecureUnitButtonTemplate")
+  row.token = token
+  row:SetAttribute("unit", token)
+  row:SetAttribute("*type1", "target") -- left click targets; mouseover macros just need the hover
+  row:RegisterForClicks("AnyUp")
+  row:RegisterForDrag("LeftButton")
+  row:SetScript("OnDragStart", StartDrag)
+  row:SetScript("OnDragStop", StopDrag)
+  row:SetScript("OnEnter", RowOnEnter)
+  row:SetScript("OnLeave", RowOnLeave)
+  ClickCastFrames = ClickCastFrames or {} -- Clique and other click-cast addons
+  ClickCastFrames[row] = true
   row:SetWidth(ROW_WIDTH)
   row:SetHeight(ROW_HEIGHT)
-  row:SetPoint("TOPLEFT", 0, -(index - 1) * (ROW_HEIGHT + ROW_GAP))
+  row:Hide()
 
   local bg = row:CreateTexture(nil, "BACKGROUND")
   bg:SetAllPoints()
@@ -241,29 +274,69 @@ local function Wanted(unit)
   return true
 end
 
-local function HideRow(row)
-  row:Hide()
+-- The row no longer shows a unit (it stays laid out until the next Layout)
+local function ClearRow(row)
   row.unit, row.guid, row.zone, row.profile = nil, nil, nil, nil
-  row.sideKind, row.healthPct = nil, nil
+  row.sideKind, row.healthPct, row.nameRaw = nil, nil, nil
   row.health:Hide()
   row.flashAmount = 0
   row.flash:SetAlpha(0)
 end
 
--- Reads every unit and lays out the rows. Returns how many rows are shown.
+for i, token in ipairs(UNITS) do rows[i] = CreateRow(token) end
+
+-- Could this unit need a row during the coming fight? (target/focus always; group and arena
+-- only when they're there.) Those get an invisible slot so they can appear in combat.
+local function MayNeed(unit)
+  if unit == "target" or unit == "focus" then return true end
+  if PARTY[unit] then
+    return UnitExists(unit) and RangeGaugeDB.party ~= false and ns.HasFriendlyProfile()
+  end
+  return select(2, IsInInstance()) == "arena"
+end
+
+-- Places the rows, top to bottom in UNITS order: showing rows first, then (forCombat) an
+-- invisible slot for every other row that may be needed. Out of combat only.
+local function Layout(forCombat)
+  if InCombatLockdown() then return end
+  local slot = 0
+  for pass = 1, 2 do
+    for _, row in ipairs(rows) do
+      local place
+      if pass == 1 then place = row.unit ~= nil else place = forCombat and not row.unit and MayNeed(row.token) end
+      if place then
+        row:ClearAllPoints()
+        row:SetPoint("TOPLEFT", 0, -slot * (ROW_HEIGHT + ROW_GAP))
+        row:SetAlpha(row.unit and 1 or 0)
+        row:Show()
+        slot = slot + 1
+      elseif pass == 2 and not row.unit and not (forCombat and MayNeed(row.token)) then
+        row:Hide()
+      end
+    end
+  end
+  if slot > 0 then frame:SetHeight(slot * (ROW_HEIGHT + ROW_GAP) - ROW_GAP) end
+  return slot
+end
+
+-- Reads every unit and updates the rows. Returns how many rows show a unit.
 local function Check()
+  local combat = InCombatLockdown()
   if not RangeGaugeDB or RangeGaugeDB.mode == "bar" then
-    frame:Hide()
+    for _, row in ipairs(rows) do
+      if row.unit then ClearRow(row) end
+    end
+    if not combat then frame:Hide() end
     return 0
   end
 
-  local shown = 0
-  for _, unit in ipairs(UNITS) do
+  local shown, changed = 0, false
+  for _, row in ipairs(rows) do
+    local unit = row.token
     if Wanted(unit) then
       shown = shown + 1
-      local row = rows[shown] or CreateRow(shown)
-      rows[shown] = row
-      -- A different unit or person in this row: don't flash for the switch
+      if not row.unit then changed = true end
+      -- A different person in this row: don't flash for the switch
       local guid = UnitGUID(unit)
       local fresh = row.unit ~= unit or row.guid ~= guid
       if fresh then
@@ -278,17 +351,24 @@ local function Check()
       UpdateSide(row, unit)
       UpdateHealth(row, unit)
       UpdateRow(row, unit, fresh)
-      row:Show()
+      if combat and row:GetAlpha() < 1 then row:SetAlpha(1) end
+    elseif row.unit then
+      ClearRow(row)
+      changed = true
+      if combat then row:SetAlpha(0) end -- keeps its slot (and mouseover) until combat ends
     end
   end
-  for i = shown + 1, #rows do
-    if rows[i].unit then HideRow(rows[i]) end
-  end
 
+  -- In combat the layout is frozen (see the top of this file)
+  if combat then return shown end
+
+  if changed or frame.needsLayout then
+    frame.needsLayout = false
+    Layout(false)
+  end
   if shown > 0 then
     hint:Hide()
     hintBg:Hide()
-    frame:SetHeight(shown * (ROW_HEIGHT + ROW_GAP) - ROW_GAP)
     frame:Show()
   elseif not RangeGaugeDB.locked then
     hint:Show()
@@ -353,8 +433,21 @@ events:RegisterEvent("ARENA_OPPONENT_UPDATE")
 events:RegisterEvent("PARTY_MEMBERS_CHANGED")
 events:RegisterEvent("RAID_ROSTER_UPDATE")
 events:RegisterEvent("UNIT_HEALTH")
+events:RegisterEvent("PLAYER_REGEN_DISABLED")
+events:RegisterEvent("PLAYER_REGEN_ENABLED")
 events:SetScript("OnEvent", function(_, event, unit)
-  if event == "UNIT_HEALTH" then
+  if event == "PLAYER_REGEN_DISABLED" then
+    -- Fires just before combat lockdown: last chance to give every possible row a slot
+    if RangeGaugeDB.mode ~= "bar" and Layout(true) > 0 then
+      hint:Hide()
+      hintBg:Hide()
+      frame:Show()
+    end
+    ns.WakeLights()
+  elseif event == "PLAYER_REGEN_ENABLED" then
+    frame.needsLayout = true -- drop the empty combat slots, re-sort
+    ns.WakeLights()
+  elseif event == "UNIT_HEALTH" then
     -- Only matters while switched off: a dead unit we watch came back to life
     if not running and UNIT_SET[unit] and Wanted(unit) then ns.WakeLights() end
   else
@@ -370,6 +463,7 @@ function ns.LightsTracker(unit)
 end
 
 function ns.RestoreLights()
+  if InCombatLockdown() then return end
   frame:ClearAllPoints()
   local p = RangeGaugeDB.lightsPoint
   if p then

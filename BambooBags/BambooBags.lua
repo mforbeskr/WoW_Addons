@@ -1,4 +1,4 @@
--- BambooBags: your bags and bank in two clean, translucent windows, split into Gear / Outfits / General.
+-- BambooBags: your bags and bank in two bamboo-framed, translucent hemp-cloth windows, split into Gear / Outfits / General.
 -- Sorting is "virtual": items are shown in sorted order but never moved, so it's instant and safe.
 -- Alt+Left-click an item to move it to another section; the choice is remembered per item.
 
@@ -14,6 +14,7 @@ local SCALE = 0.6          -- Blizzard item buttons are 37px; this makes them ~2
 local SIZE = 37 * SCALE
 local GAP = 3
 local INSET = 15           -- frame edge to content
+local BAMBOO_EDGE = 10     -- bamboo border thickness (32px texture shown at 10px)
 local HEADER = 26
 local SECTION_TITLE = 14
 local SECTION_GAP = 6
@@ -153,10 +154,12 @@ local function Groove(parent)
   return dark
 end
 
--- Covers the frame with 128px grain tiles, cropping the last row/column.
+-- Covers the frame (inside the bamboo border) with 128px weave tiles, cropping the last row/column.
 -- Tiles are created once and reused; only runs when the window is laid out.
 local TILE = 128
+local TILE_INSET = 3 -- the bamboo stalks start a few pixels in from the frame edge
 local function TileBackground(f, w, h)
+  w, h = w - TILE_INSET * 2, h - TILE_INSET * 2
   local cols, rows = math.ceil(w / TILE), math.ceil(h / TILE)
   local alpha = BambooBagsDB.alpha or DEFAULT_ALPHA
   local n = 0
@@ -168,11 +171,11 @@ local function TileBackground(f, w, h)
       local t = f.tiles[n]
       if not t then
         t = f:CreateTexture(nil, "BACKGROUND")
-        t:SetTexture(TEX .. "grain")
+        t:SetTexture(TEX .. "weave")
         f.tiles[n] = t
       end
       t:ClearAllPoints()
-      t:SetPoint("TOPLEFT", (c - 1) * TILE, -(r - 1) * TILE)
+      t:SetPoint("TOPLEFT", TILE_INSET + (c - 1) * TILE, -(TILE_INSET + (r - 1) * TILE))
       t:SetWidth(tw)
       t:SetHeight(th)
       t:SetTexCoord(0, tw / TILE, 0, th / TILE)
@@ -181,6 +184,33 @@ local function TileBackground(f, w, h)
     end
   end
   for i = n + 1, #f.tiles do f.tiles[i]:Hide() end
+end
+
+-- Lays out a stitch line of the given width from 64px pieces (the client won't repeat a
+-- texture); pieces are created once and reused. Tinted to the gold accent and kept faint.
+local STITCH_ALPHA = 0.5
+local function SetStitchWidth(line, w)
+  line:SetWidth(w)
+  local n = math.ceil(w / 64)
+  for i = 1, math.max(n, #line.segs) do
+    local seg = line.segs[i]
+    if i <= n then
+      if not seg then
+        seg = line:CreateTexture(nil, "ARTWORK")
+        seg:SetTexture(TEX .. "stitch")
+        seg:SetVertexColor(1, 0.95, 0.85, STITCH_ALPHA)
+        seg:SetHeight(8)
+        seg:SetPoint("LEFT", (i - 1) * 64, 0)
+        line.segs[i] = seg
+      end
+      local segW = math.min(64, w - (i - 1) * 64)
+      seg:SetWidth(segW)
+      seg:SetTexCoord(0, segW / 64, 0, 1)
+      seg:Show()
+    elseif seg then
+      seg:Hide()
+    end
+  end
 end
 
 -- Raised button: dark vertical gradient, black outline and a lit top edge. Lighter with a gold
@@ -332,16 +362,19 @@ local function NewWindow(frameName, opts)
   f:RegisterForDrag("LeftButton")
   tinsert(UISpecialFrames, frameName) -- Escape closes it
 
-  -- Look: translucent grain panel (tiles laid out by TileBackground; backdrop tiling smears),
-  -- light from above (shade gradient + lit top/left rim), black outline, soft drop shadow.
+  -- Look: a solid bamboo frame (lashed corners) around translucent dark hemp cloth (tiles laid
+  -- out by TileBackground; backdrop tiling smears), light from above, soft drop shadow.
+  f:SetBackdrop({
+    edgeFile = TEX .. "bamboo", edgeSize = BAMBOO_EDGE,
+    insets = { left = 3, right = 3, top = 3, bottom = 3 },
+  })
+  f:SetBackdropBorderColor(1, 1, 1, 1)
   f.tiles = {}
   DropShadow(f, 12, 0.55)
   local shade = Solid(f, "BORDER", TEXT)
-  shade:SetPoint("TOPLEFT", 1, -1)
-  shade:SetPoint("BOTTOMRIGHT", -1, 1)
+  shade:SetPoint("TOPLEFT", 3, -3)
+  shade:SetPoint("BOTTOMRIGHT", -3, 3)
   shade:SetGradientAlpha("VERTICAL", 0, 0, 0, 0.25, 1, 1, 1, 0.045)
-  Ring(f, "ARTWORK", 0, BLACK, BLACK)
-  Ring(f, "ARTWORK", 1, { 1, 1, 1, 0.14 }, { 1, 1, 1, 0.04 })
 
   local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
   title:SetPoint("TOPLEFT", INSET, -(INSET - 3))
@@ -350,8 +383,8 @@ local function NewWindow(frameName, opts)
   title:SetShadowOffset(1, -1)
 
   local headerLine = Groove(f)
-  headerLine:SetPoint("TOPLEFT", 6, -(INSET + HEADER - 9))
-  headerLine:SetPoint("TOPRIGHT", -6, -(INSET + HEADER - 9))
+  headerLine:SetPoint("TOPLEFT", INSET - 3, -(INSET + HEADER - 9))
+  headerLine:SetPoint("TOPRIGHT", -(INSET - 3), -(INSET + HEADER - 9))
   w.footerLine = Groove(f)
 
   -- Header buttons are laid out right to left
@@ -409,15 +442,15 @@ local function NewWindow(frameName, opts)
   search:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
   search:SetScript("OnTextChanged", function() w:ApplySearch() end)
 
-  -- Section titles, each followed by a hairline that fades out to the right
+  -- Section titles, each followed by a quiet embroidered running stitch in the same gold
   for _, s in ipairs(SECTIONS) do
     local t = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     t:SetText(s.label)
     t:SetTextColor(unpack(ACCENT))
-    local line = Solid(f, "ARTWORK", ACCENT)
-    line:SetGradientAlpha("HORIZONTAL", ACCENT[1], ACCENT[2], ACCENT[3], 0.4, ACCENT[1], ACCENT[2], ACCENT[3], 0)
+    local line = CreateFrame("Frame", nil, f)
+    line.segs = {}
+    line:SetHeight(8)
     line:SetPoint("LEFT", t, "RIGHT", 6, 0)
-    PixelJob(function(p) line:SetHeight(p) end)
     w.sectionTitles[s.key] = { title = t, line = line }
   end
 
@@ -583,7 +616,7 @@ function Window:Refresh()
         st.title:SetPoint("TOPLEFT", f, "TOPLEFT", INSET, -y)
         st.title:Show()
         local lineW = width - INSET * 2 - st.title:GetStringWidth() - 6
-        st.line:SetWidth(lineW)
+        SetStitchWidth(st.line, lineW)
         st.line:Show()
         y = self:PlaceGrid(list, y + SECTION_TITLE) + SECTION_GAP
       else
@@ -604,8 +637,8 @@ function Window:Refresh()
   f:SetHeight(height)
   TileBackground(f, width, height)
   self.footerLine:ClearAllPoints()
-  self.footerLine:SetPoint("BOTTOMLEFT", 6, INSET + footer - 3)
-  self.footerLine:SetPoint("BOTTOMRIGHT", -6, INSET + footer - 3)
+  self.footerLine:SetPoint("BOTTOMLEFT", INSET - 3, INSET + footer - 3)
+  self.footerLine:SetPoint("BOTTOMRIGHT", -(INSET - 3), INSET + footer - 3)
 
   self.sortButton.text:SetText(BambooBagsDB.sorted and "Sections" or "Bag order")
   self.freeText:SetText(string.format("Free %d/%d", #empties, #all))
