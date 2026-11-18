@@ -30,7 +30,8 @@ Addons must run well on weak PCs:
   (256x64 atlas) around dark toasted hemp cloth (`textures/hemp.tga`, 128px, 80% opaque,
   `/bb alpha 0.2-1`). Both made by `tools/make_frame.py` (python); the older linen/stitch/bamboo
   textures come from `tools/make_textures.ps1` (TransmogStudio uses linen + bamboo). Cream text,
-  dark cloth-label buttons, flaps sewn with stitched seams, label bands on section titles. Sections: Gear (ilvl 200+),
+  dark cloth-label buttons, header flap sewn with a stitched seam; tight layout
+  where each section and the footer sit in sunken cloth pockets. Sections: Gear (ilvl 200+),
   Outfits (cosmetics/transmog), General. Search, sort, ilvl text, quality borders,
   free-slot counter, sell-grey-junk button at vendors (skips items moved to Outfits),
   bank bag slot row + buy-slot button in the bank window, Alt+click moves items

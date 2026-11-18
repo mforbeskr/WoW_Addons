@@ -113,13 +113,36 @@ Next ideas:
 
 ---
 
+## Gear optimizer (idea, added 2026-11-18)
+
+An addon that builds the best gear set from what you own for different purposes, e.g.
+healing PvE, healing PvP (resilience), damage, solo/farming. As lightweight as possible.
+
+- **Read existing sets:** the Equipment Manager is turned on, so start from the sets
+  already saved there (`GetNumEquipmentSets`, `GetEquipmentSetInfo`,
+  `GetEquipmentSetItemIDs`). GearDump could also list them in its export.
+- **Score items:** `GetItemStats(link)` per item, times a small weight table per purpose
+  (for example spell power, haste, crit, MP5, resilience for a holy priest). Count gems
+  and enchants from the item link.
+- **Pick per slot:** best-scoring item you own (equipped, bags, bank remembered like
+  TransmogStudio does) for each slot. Handle rings/trinkets as pairs, 2H vs MH+OH, and
+  unique-equipped items.
+- **Output:** show the suggested set next to the current one with the score gain, and
+  one button to save it as an Equipment Manager set (`SaveEquipmentSet`), so switching
+  stays Blizzard's job.
+- **Lightweight:** only work when you open it or click "optimize", no background
+  scanning, no libraries; cache item stats per item ID for the session.
+- Open questions: hit cap / defense cap handling (soft caps in the weights), and where
+  to get good default weights per spec.
+
+---
+
 ## Smaller ideas
 
 - RangeGauge lighter mode, if it ever feels heavy: set `PARTICLES` in `Lights.lua` and the
   bar's `NewTracker(400)` in `Gauge.lua` to 120. Roughly half the CPU, ~0.04 yd less
   accurate (simulator). Then `/reload`.
 - Maelstrom Weapon tracker (enhancement): glow or sound at 5 stacks. Uses `UNIT_AURA`.
-- BambooBags: button to buy bank bag slots (the Blizzard bank screen is hidden now).
 - BambooBags: optionally sell more than greys (old food, etc.), never touching Outfits.
 
 ---

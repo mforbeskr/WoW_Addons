@@ -15,12 +15,14 @@ local EMBOSS = { 0, 0, 0, 0.8 }     -- soft dark shadow under the light text
 local COLUMNS = 14
 local SCALE = 0.6          -- Blizzard item buttons are 37px; this makes them ~22px
 local SIZE = 37 * SCALE
-local GAP = 3
-local INSET = 26           -- frame edge to content (clear of the bamboo and the corner lashings)
-local HEADER = 26
-local SECTION_TITLE = 14
-local SECTION_GAP = 6
-local FOOTER = 18
+local GAP = 2
+local INSET = 21           -- frame edge to content (just clear of the bamboo)
+local HEADER = 23
+local SECTION_TITLE = 12   -- the section name, at the top of its pocket
+local SECTION_GAP = 4      -- between pockets
+local POCKET_PAD = 3       -- pocket edge to the icons inside it
+local FOOT_ROW = 15        -- the footer pocket (free slots, currencies, gold)
+local FOOTER = 16          -- content to footer pocket, plus the pocket
 local SELL_ROW = 24        -- extra footer row for the Sell junk button while a vendor is open
 local EMPTY_SLOT = "Interface\\PaperDoll\\UI-Backpack-EmptySlot"
 local DEFAULT_GEAR_LEVEL = 200
@@ -120,6 +122,43 @@ local function SetRingColor(ring, lit, shade)
   ring.bottom:SetVertexColor(unpack(shade)); ring.right:SetVertexColor(unpack(shade))
 end
 
+-- A pocket sewn into the cloth: a darker patch, sunken (dark top/left edge, faint light
+-- bottom/right, a soft shadow inside the top). Icons and text sit in pockets so the window can
+-- be tight without looking crowded. Drawn on the window itself, under the items; the caller
+-- anchors the returned patch. Created once, reused.
+local function Pocket(f)
+  local bg = Solid(f, "BORDER", { 0, 0, 0, 0.3 })
+  local function Edge(c) return Solid(f, "ARTWORK", c) end
+  local top, left = Edge({ 0, 0, 0, 0.7 }), Edge({ 0, 0, 0, 0.5 })
+  local bottom, right = Edge({ 1, 0.95, 0.85, 0.09 }), Edge({ 1, 0.95, 0.85, 0.09 })
+  local shadow = Solid(f, "ARTWORK", BLACK)
+  shadow:SetGradientAlpha("VERTICAL", 0, 0, 0, 0, 0, 0, 0, 0.3)
+  top:SetPoint("TOPLEFT", bg); top:SetPoint("TOPRIGHT", bg)
+  bottom:SetPoint("BOTTOMLEFT", bg); bottom:SetPoint("BOTTOMRIGHT", bg)
+  left:SetPoint("TOPLEFT", bg); left:SetPoint("BOTTOMLEFT", bg)
+  right:SetPoint("TOPRIGHT", bg); right:SetPoint("BOTTOMRIGHT", bg)
+  shadow:SetPoint("TOPLEFT", bg); shadow:SetPoint("TOPRIGHT", bg)
+  shadow:SetHeight(4)
+  PixelJob(function(p) top:SetHeight(p); bottom:SetHeight(p); left:SetWidth(p); right:SetWidth(p) end)
+  bg.parts = { top, left, bottom, right, shadow }
+  return bg
+end
+
+local function ShowPocket(pocket, show)
+  if show then pocket:Show() else pocket:Hide() end
+  for _, t in ipairs(pocket.parts) do
+    if show then t:Show() else t:Hide() end
+  end
+end
+
+-- Places a pocket from `top` to `bottom` (pixels from the window's top), full content width
+local function PlacePocket(pocket, f, top, bottom)
+  pocket:ClearAllPoints()
+  pocket:SetPoint("TOPLEFT", f, "TOPLEFT", INSET - POCKET_PAD, -top)
+  pocket:SetPoint("BOTTOMRIGHT", f, "TOPRIGHT", -(INSET - POCKET_PAD), -bottom)
+  ShowPocket(pocket, true)
+end
+
 -- Bamboo frame -------------------------------------------------------------------
 -- Four dark green poles that cross and overhang at the corners, rope X lashings and two flat
 -- leaf sprigs lying along the poles (never sticking out of the frame), all
@@ -135,7 +174,7 @@ local POLE_AT = 9                  -- pole centre line, from the frame edge
 local OVERHANG = 10                -- how far the poles run past the crossings
 local PIECE = 64 * POLE / 16       -- one internode on screen (60px between nodes)
 local CAP = 8 * POLE / 16          -- the cut end
-local LASH_SIZE = 30
+local LASH_SIZE = 24
 local LEAF_LENGTH = 64 * POLE / 16 -- the flat sprig, lying on a pole
 local BAMBOO_SHARE = 0.75          -- the bamboo is this much as opaque as the cloth (more see-through)
 local POLE_START = POLE_AT - POLE / 2 - OVERHANG -- where a pole begins (negative = outside)
@@ -489,7 +528,7 @@ local function NewWindow(frameName, opts)
   shade:SetGradientAlpha("VERTICAL", 0, 0, 0, 0.18, 1, 0.95, 0.85, 0.04)
 
   local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-  title:SetPoint("TOPLEFT", INSET, -(INSET - 3))
+  title:SetPoint("TOPLEFT", INSET + 1, -(INSET - 3))
   title:SetText(opts.title)
   title:SetTextColor(unpack(INK))
   title:SetShadowColor(unpack(EMBOSS))
@@ -499,19 +538,20 @@ local function NewWindow(frameName, opts)
   local flap = Solid(f, "BORDER", BLACK)
   flap:SetPoint("TOPLEFT", TILE_INSET, -TILE_INSET)
   flap:SetPoint("TOPRIGHT", -TILE_INSET, -TILE_INSET)
-  flap:SetHeight(INSET + HEADER - 9 - TILE_INSET)
+  flap:SetHeight(INSET + HEADER - 5 - TILE_INSET)
   flap:SetGradientAlpha("VERTICAL", 0, 0, 0, 0.26, 0, 0, 0, 0.14)
   w.headerSeam = CreateFrame("Frame", nil, f)
   w.headerSeam.segs = {}
   w.headerSeam:SetHeight(8)
-  w.headerSeam:SetPoint("LEFT", f, "TOPLEFT", INSET - 3, -(INSET + HEADER - 9))
-  w.footerFlap = Solid(f, "BORDER", BLACK)
-  w.footerFlap:SetPoint("BOTTOMLEFT", TILE_INSET, TILE_INSET)
-  w.footerFlap:SetPoint("BOTTOMRIGHT", -TILE_INSET, TILE_INSET)
-  w.footerFlap:SetGradientAlpha("VERTICAL", 0, 0, 0, 0.14, 0, 0, 0, 0.26)
-  w.footerSeam = CreateFrame("Frame", nil, f)
-  w.footerSeam.segs = {}
-  w.footerSeam:SetHeight(8)
+  w.headerSeam:SetPoint("LEFT", f, "TOPLEFT", INSET - POCKET_PAD, -(INSET + HEADER - 5))
+
+  -- Footer pocket: free slots on the left, currencies after them, gold on the right
+  w.footPocket = Pocket(f)
+  w.footPocket:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", INSET - POCKET_PAD, INSET - 3)
+  w.footPocket:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -(INSET - POCKET_PAD), INSET - 3)
+  w.footPocket:SetHeight(FOOT_ROW)
+  -- One pocket per section, plus one for the whole grid in bag order
+  w.allPocket = Pocket(f)
 
   -- Header buttons are laid out right to left
   local last
@@ -520,7 +560,7 @@ local function NewWindow(frameName, opts)
     if last then
       b:SetPoint("RIGHT", last, "LEFT", -2, 0)
     else
-      b:SetPoint("TOPRIGHT", -INSET + 1, -(INSET - 6))
+      b:SetPoint("TOPRIGHT", -(INSET + 1), -(INSET - 5))
     end
     last = b
     return b
@@ -584,19 +624,16 @@ local function NewWindow(frameName, opts)
     line:SetHeight(8)
     line:SetPoint("LEFT", t, "RIGHT", 6, 0)
     -- A sewn-on label tape behind the title row: darker cloth fading out to the right
-    local band = Solid(f, "BORDER", BLACK)
-    band:SetGradientAlpha("HORIZONTAL", 0, 0, 0, 0.3, 0, 0, 0, 0.02)
-    band:SetHeight(SECTION_TITLE - 1)
-    w.sectionTitles[s.key] = { title = t, line = line, band = band }
+    w.sectionTitles[s.key] = { title = t, line = line, pocket = Pocket(f) }
   end
 
   w.freeText = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-  w.freeText:SetPoint("BOTTOMLEFT", INSET, INSET - 4)
+  w.freeText:SetPoint("LEFT", w.footPocket, "LEFT", POCKET_PAD + 2, 0)
   w.freeText:SetTextColor(unpack(INK_SOFT))
   w.freeText:SetShadowOffset(0, 0)
   if opts.showMoney then
     w.moneyText = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    w.moneyText:SetPoint("BOTTOMRIGHT", -INSET, INSET - 4)
+    w.moneyText:SetPoint("RIGHT", w.footPocket, "RIGHT", -(POCKET_PAD + 2), 0)
     w.moneyText:SetTextColor(unpack(INK))
     w.moneyText:SetShadowOffset(0, 0)
   end
@@ -751,30 +788,32 @@ function Window:Refresh()
       local list = lists[s.key]
       local st = self.sectionTitles[s.key]
       if #list > 0 then
+        -- Pocket: the section name at its top, the icons below it
         st.title:ClearAllPoints()
-        st.title:SetPoint("TOPLEFT", f, "TOPLEFT", INSET, -y)
+        st.title:SetPoint("TOPLEFT", f, "TOPLEFT", INSET, -(y + 2))
         st.title:Show()
-        st.band:ClearAllPoints()
-        st.band:SetPoint("TOPLEFT", f, "TOPLEFT", INSET - 4, -(y - 1))
-        st.band:SetPoint("TOPRIGHT", f, "TOPRIGHT", -(INSET - 4), -(y - 1))
-        st.band:Show()
         local lineW = width - INSET * 2 - st.title:GetStringWidth() - 6
         SetStitchWidth(st.line, lineW)
         st.line:Show()
-        y = self:PlaceGrid(list, y + SECTION_TITLE) + SECTION_GAP
+        local bottom = self:PlaceGrid(list, y + 2 + SECTION_TITLE) + POCKET_PAD
+        PlacePocket(st.pocket, f, y, bottom)
+        y = bottom + SECTION_GAP
       else
         st.title:Hide()
         st.line:Hide()
-        st.band:Hide()
+        ShowPocket(st.pocket, false)
       end
     end
+    ShowPocket(self.allPocket, false)
   else
     for _, st in pairs(self.sectionTitles) do
       st.title:Hide()
       st.line:Hide()
-      st.band:Hide()
+      ShowPocket(st.pocket, false)
     end
-    y = self:PlaceGrid(all, y) + SECTION_GAP
+    local bottom = self:PlaceGrid(all, y + POCKET_PAD) + POCKET_PAD
+    PlacePocket(self.allPocket, f, y, bottom)
+    y = bottom + SECTION_GAP
   end
 
   local footer = self.footer + (self.extraFooter or 0)
@@ -783,12 +822,8 @@ function Window:Refresh()
   local alpha = TileBackground(f, width, height)
   LayoutFrame(self, width, height)
   for _, part in ipairs(self.bamboo) do part:SetAlpha(alpha * BAMBOO_SHARE) end
-  local seamW = width - (INSET - 3) * 2
+  local seamW = width - (INSET - POCKET_PAD) * 2
   SetStitchWidth(self.headerSeam, seamW)
-  self.footerFlap:SetHeight(INSET + footer - 5 - TILE_INSET)
-  self.footerSeam:ClearAllPoints()
-  self.footerSeam:SetPoint("LEFT", f, "BOTTOMLEFT", INSET - 3, INSET + footer - 5)
-  SetStitchWidth(self.footerSeam, seamW)
 
   self.sortButton.text:SetText(BambooBagsDB.sorted and "Sections" or "Bag order")
   self.freeText:SetText(string.format("Free %d/%d", #empties, #all))
@@ -990,7 +1025,7 @@ for i = 1, NUM_BANKBAGSLOTS do
   local b = CreateFrame("Button", nil, bankWindow.frame)
   b:SetWidth(SIZE)
   b:SetHeight(SIZE)
-  b:SetPoint("BOTTOMLEFT", bankWindow.frame, "BOTTOMLEFT", INSET + (i - 1) * (SIZE + GAP), INSET + FOOTER - 2)
+  b:SetPoint("BOTTOMLEFT", bankWindow.frame, "BOTTOMLEFT", INSET + (i - 1) * (SIZE + GAP), INSET + FOOTER)
   b.icon = b:CreateTexture(nil, "ARTWORK")
   b.icon:SetAllPoints()
   b.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
