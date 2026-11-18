@@ -234,4 +234,19 @@ for ($y = 0; $y -lt 64; $y++) {
 }
 Save-Tga $glow "glow"
 
+# ---------- grain.tga: the window background, tileable 128x128 ----------
+# Near-black slate with a very fine grain and a faint brushed streak; tinted and faded in game.
+$grain = New-Image 128 128
+$grainRand = New-Object Random 23   # own seed so the textures above stay unchanged
+$streak = 0..127 | ForEach-Object { $grainRand.Next(-2, 3) }
+for ($y = 0; $y -lt 128; $y++) {
+  for ($x = 0; $x -lt 128; $x++) {
+    # Tileable soft mottle (whole periods across the tile) plus per-pixel grain
+    $mott = 2.5 * [Math]::Sin(2 * [Math]::PI * $x / 128 + 0.7) * [Math]::Sin(2 * [Math]::PI * $y / 64 + 1.9)
+    $v = $mott + $streak[$y] + $grainRand.Next(-3, 4)
+    Set-Px $grain $x $y (26 + $v) (27 + $v) (31 + $v) 255
+  }
+}
+Save-Tga $grain "grain"
+
 "Textures written to $out"
