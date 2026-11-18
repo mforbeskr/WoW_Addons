@@ -29,6 +29,7 @@ local UNKNOWN_TRINKET = 0.03        -- unreadable trinket effect: share of DPS a
 local UNKNOWN_RELIC = 0.012         -- the same for a totem
 local UNKNOWN_BONUS = { [2] = 0.02, [4] = 0.03 } -- unreadable set bonus: share of DPS
 local GEM_OPTIONS = { { agi = 20 }, { sp = 23 }, { haste = 20 }, { crit = 20 }, { ap = 40 }, { hit = 20 } }
+local MIN_GAIN = 0.002              -- a change must add at least 0.2% DPS, or it isn't suggested
 
 -- Item stats ----------------------------------------------------------------------------------
 local KEY = {
@@ -621,6 +622,48 @@ local function SetTrades(set, cands, ctx)
   return best
 end
 
+-- Slots that change together: a ring or trinket pair, both weapons, or a single slot
+local GROUPS = { { 1 }, { 2 }, { 3 }, { 5 }, { 6 }, { 7 }, { 8 }, { 9 }, { 10 }, { 15 }, { 18 },
+  { 11, 12 }, { 13, 14 }, { 16, 17 } }
+
+local function GroupChanged(best, current, group)
+  for _, slot in ipairs(group) do
+    local a, b = best[slot], current[slot]
+    if not (a == b or (a and b and a.link == b.link)) then return true end
+  end
+  return false
+end
+
+-- Drops changes that add less than MIN_GAIN (not worth a swap, a bank trip or new gems), then
+-- returns how much each remaining change adds: gains[slot] = share of DPS
+local function Prune(best, current, ctx)
+  local bestV = Evaluate(best, ctx)
+  local again = true
+  while again do
+    again = false
+    for _, group in ipairs(GROUPS) do
+      if GroupChanged(best, current, group) then
+        local trial = Copy(best)
+        for _, slot in ipairs(group) do trial[slot] = current[slot] end
+        local v = Evaluate(trial, ctx)
+        if bestV - v < MIN_GAIN * bestV then
+          best, bestV, again = trial, v, true
+        end
+      end
+    end
+  end
+  local gains = {}
+  for _, group in ipairs(GROUPS) do
+    if GroupChanged(best, current, group) then
+      local trial = Copy(best)
+      for _, slot in ipairs(group) do trial[slot] = current[slot] end
+      local gain = (bestV - Evaluate(trial, ctx)) / bestV
+      for _, slot in ipairs(group) do gains[slot] = gain end
+    end
+  end
+  return best, gains
+end
+
 -- Context for one Find: scenario, talents, base stats, glyphs, best gem for empty sockets
 local function Context(scenarioKey, current)
   local ctx = {
@@ -666,6 +709,8 @@ function ns.Find(scenarioKey)
   local best = Climb(Copy(current), cands, ctx)
   best = SetTrades(best, cands, ctx)
   best = Climb(best, cands, ctx)
+  local gains
+  best, gains = Prune(best, current, ctx)
 
   local curDPS, _, curStats = Evaluate(current, ctx, true)
   local bestDPS, breakdown, stats, bonuses, estimated = Evaluate(best, ctx, true)
@@ -691,7 +736,7 @@ function ns.Find(scenarioKey)
   end
 
   return {
-    scenario = ctx.sc, key = scenarioKey, missing = missing, current = current, best = best,
+    scenario = ctx.sc, key = scenarioKey, missing = missing, current = current, best = best, gains = gains,
     curDPS = curDPS, bestDPS = bestDPS, curStats = curStats, stats = stats, breakdown = breakdown,
     bonuses = bonuses, estimated = estimated, glyphs = ctx.glyphs, saved = saved,
   }

@@ -88,9 +88,12 @@ local function Render()
       row.arrow:SetText("")
       row.mark:Hide()
     else
-      local tag
+      local tag = ""
       if best.where == "bank" then tag = " |cffffbf4d(bank)|r"
       elseif best.where == "equipped" then tag = " |cffffbf4d(other slot)|r" end
+      if best.st.empty > 0 then tag = tag .. " |cffffbf4d(needs gems)|r" end
+      local gain = result.gains[slot]
+      if gain then tag = string.format(" %s+%.1f%%|r", Color(GOOD), 100 * gain) .. tag end
       SetCell(row.new, best, tag)
       row.arrow:SetText(Color(GOOD) .. ">|r")
       row.mark:Show()
@@ -151,6 +154,7 @@ local function UpdateNotes()
   local notes = {
     "Estimated DPS with ICC raid buffs; your talents, glyphs, procs and set bonuses included.",
     "~ = estimated (an effect or set bonus it can't read). Not counted: enchants, socket bonuses.",
+    "Only changes worth at least 0.2% DPS are shown; +x% = what that change adds.",
   }
   if result and result.missing > 0 then
     table.insert(notes, 1, Color(WARN) .. result.missing .. " item(s) not loaded yet - press Find again in a moment.|r")

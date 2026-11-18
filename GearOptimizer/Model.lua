@@ -84,15 +84,20 @@ function M.ReadTalents()
   return t
 end
 
--- Base stats from race and class (no gear, no buffs)
+-- Base stats from race and class at level 80 (no gear, no buffs). From a table on purpose:
+-- UnitStat's numbers already include your gear, which would count it twice.
+local SHAMAN_BASE = { str = 121, agi = 71, int = 128 }
+local RACE_MOD = {
+  Draenei = { str = 1, agi = -3, int = 0 }, Orc = { str = 3, agi = -3, int = -3 },
+  Tauren = { str = 5, agi = -4, int = -4 }, Troll = { str = 1, agi = 2, int = -4 },
+}
 function M.ReadBase()
-  local b = {}
-  b.str = UnitStat("player", 1)
-  b.agi = UnitStat("player", 2)
-  b.int = UnitStat("player", 4)
   local _, race = UnitRace("player")
-  b.draenei = race == "Draenei"
-  return b
+  local mod = RACE_MOD[race] or { str = 0, agi = 0, int = 0 }
+  return {
+    str = SHAMAN_BASE.str + mod.str, agi = SHAMAN_BASE.agi + mod.agi, int = SHAMAN_BASE.int + mod.int,
+    draenei = race == "Draenei",
+  }
 end
 
 local function clamp(x, lo, hi) return math.max(lo, math.min(hi, x)) end
