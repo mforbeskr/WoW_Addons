@@ -1,4 +1,6 @@
-# Generates the BambooBags textures (uncompressed 32-bit TGA, which the 3.3.5 client loads directly).
+# Generates the older BambooBags textures (linen, stitch, bamboo edge; TransmogStudio uses
+# linen + bamboo). The bag frame and hemp cloth come from make_frame.py.
+# Uncompressed 32-bit TGA, which the 3.3.5 client loads directly.
 # Run from anywhere:  powershell -ExecutionPolicy Bypass -File make_textures.ps1
 # Changed textures need a full client restart, not just /reload.
 # Note: PowerShell variable names ignore case ($S and $s are the same variable), so keep names distinct.
@@ -222,45 +224,5 @@ $edge = New-Image ($SEG * 8) $SEG
 for ($i = 0; $i -lt 4; $i++) { Draw-Stalk $edge ($i * $SEG) }
 for ($i = 4; $i -lt 8; $i++) { Draw-Lashing $edge ($i * $SEG) }
 Save-Tga $edge "bamboo"
-
-# ---------- glow.tga: soft white radial glow, tinted purple in game ----------
-$glow = New-Image 64 64
-for ($y = 0; $y -lt 64; $y++) {
-  for ($x = 0; $x -lt 64; $x++) {
-    $d = [Math]::Sqrt([Math]::Pow($x - 31.5, 2) + [Math]::Pow($y - 31.5, 2)) / 32
-    $a = [Math]::Pow([Math]::Max(0, 1 - $d), 2)
-    Set-Px $glow $x $y 255 255 255 (255 * $a)
-  }
-}
-Save-Tga $glow "glow"
-
-# ---------- weave.tga: the window background, tileable 128x128 ----------
-# The linen's plain hemp weave, but near-black charcoal and low contrast, so it reads as quiet
-# cloth behind the items rather than a pattern. Faded in game for the translucent window.
-$weave = New-Image 128 128
-$weaveRand = New-Object Random 31   # own seed so the textures above stay unchanged
-$wBase = @(29, 29, 32)
-$wWarp = 0..($THREADS - 1) | ForEach-Object { $weaveRand.Next(-2, 3) }
-$wWeft = 0..($THREADS - 1) | ForEach-Object { $weaveRand.Next(-2, 3) }
-$wFibCol = 0..127 | ForEach-Object { $weaveRand.Next(-2, 3) }
-$wFibRow = 0..127 | ForEach-Object { $weaveRand.Next(-2, 3) }
-for ($y = 0; $y -lt 128; $y++) {
-  for ($x = 0; $x -lt 128; $x++) {
-    $cx = [Math]::Floor($x / $CELL); $cy = [Math]::Floor($y / $CELL)
-    $ux = (($x % $CELL) + 0.5) / $CELL; $uy = (($y % $CELL) + 0.5) / $CELL
-    if ((($cx + $cy) % 2) -eq 0) {
-      $across = $ux; $along = $uy; $v = $wWarp[$cx] + $wFibRow[$y]
-    } else {
-      $across = $uy; $along = $ux; $v = $wWeft[$cy] + $wFibCol[$x]
-    }
-    # Same rounded threads as the linen, with about a third of the depth
-    $shade = (0.86 + 0.16 * [Math]::Pow([Math]::Sin([Math]::PI * $across), 0.7)) *
-             (0.96 + 0.04 * [Math]::Sin([Math]::PI * $along))
-    $mott = 1.5 * [Math]::Sin(2 * [Math]::PI * $x / 128 + 1.3) * [Math]::Sin(2 * [Math]::PI * $y / 64 + 0.4)
-    $v += $mott + $weaveRand.Next(-1, 2)
-    Set-Px $weave $x $y (($wBase[0] + $v) * $shade + 1) (($wBase[1] + $v) * $shade) (($wBase[2] + $v) * $shade - 1) 255
-  }
-}
-Save-Tga $weave "weave"
 
 "Textures written to $out"

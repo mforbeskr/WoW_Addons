@@ -1,20 +1,22 @@
--- BambooBags: your bags and bank in two bamboo-framed, translucent hemp-cloth windows, split into Gear / Outfits / General.
+-- BambooBags: your bags and bank as hemp-cloth pouches in a lashed bamboo frame, split into Gear / Outfits / General.
 -- Sorting is "virtual": items are shown in sorted order but never moved, so it's instant and safe.
 -- Alt+Left-click an item to move it to another section; the choice is remembered per item.
 
 local TEX = "Interface\\AddOns\\BambooBags\\textures\\"
 local WHITE = "Interface\\Buttons\\WHITE8X8"
 local PREFIX = "|cffe6c35cBags|r: "
-local ACCENT = { 0.9, 0.76, 0.42 }   -- muted gold for section labels, hover and focus
-local TEXT = { 0.86, 0.86, 0.88 }
-local MUTED = { 0.6, 0.6, 0.63 }
+-- Palette for dark hemp cloth: warm cream text, muted hemp for secondary text, bamboo green accent
+local INK = { 0.9, 0.85, 0.74 }
+local INK_SOFT = { 0.66, 0.6, 0.5 }
+local ACCENT = { 0.45, 0.62, 0.25 }  -- bamboo green: hover and focus edges
+local TEXT = { 1, 1, 1 }
 local BLACK = { 0, 0, 0, 0.95 }
+local EMBOSS = { 0, 0, 0, 0.8 }     -- soft dark shadow under the light text
 local COLUMNS = 14
 local SCALE = 0.6          -- Blizzard item buttons are 37px; this makes them ~22px
 local SIZE = 37 * SCALE
 local GAP = 3
-local INSET = 15           -- frame edge to content
-local BAMBOO_EDGE = 10     -- bamboo border thickness (32px texture shown at 10px)
+local INSET = 26           -- frame edge to content (clear of the bamboo and the corner lashings)
 local HEADER = 26
 local SECTION_TITLE = 14
 local SECTION_GAP = 6
@@ -22,7 +24,7 @@ local FOOTER = 18
 local SELL_ROW = 24        -- extra footer row for the Sell junk button while a vendor is open
 local EMPTY_SLOT = "Interface\\PaperDoll\\UI-Backpack-EmptySlot"
 local DEFAULT_GEAR_LEVEL = 200
-local DEFAULT_ALPHA = 0.82 -- background opacity; items and text stay fully opaque
+local DEFAULT_ALPHA = 0.8  -- cloth opacity: see-through, but not so much that meters behind compete
 
 local SECTIONS = {
   { key = "gear", label = "Gear" },
@@ -118,46 +120,158 @@ local function SetRingColor(ring, lit, shade)
   ring.bottom:SetVertexColor(unpack(shade)); ring.right:SetVertexColor(unpack(shade))
 end
 
--- Soft shadow around a frame, cut from the radial glow texture (corners = its quarters,
--- sides = a thin slice through its middle). Lifts the window off the game world.
-local SHADOW_PIECES = {
-  -- point, relPoint, point2, relPoint2, texcoords
-  { "BOTTOMRIGHT", "TOPLEFT", nil, nil, 0, .5, 0, .5 },
-  { "BOTTOMLEFT", "TOPRIGHT", nil, nil, .5, 1, 0, .5 },
-  { "TOPRIGHT", "BOTTOMLEFT", nil, nil, 0, .5, .5, 1 },
-  { "TOPLEFT", "BOTTOMRIGHT", nil, nil, .5, 1, .5, 1 },
-  { "BOTTOMLEFT", "TOPLEFT", "BOTTOMRIGHT", "TOPRIGHT", .49, .51, 0, .5 },     -- top
-  { "TOPLEFT", "BOTTOMLEFT", "TOPRIGHT", "BOTTOMRIGHT", .49, .51, .5, 1 },     -- bottom
-  { "TOPRIGHT", "TOPLEFT", "BOTTOMRIGHT", "BOTTOMLEFT", 0, .5, .49, .51 },     -- left
-  { "TOPLEFT", "TOPRIGHT", "BOTTOMLEFT", "BOTTOMRIGHT", .5, 1, .49, .51 },     -- right
-}
-local function DropShadow(f, s, alpha)
-  for i, p in ipairs(SHADOW_PIECES) do
-    local t = f:CreateTexture(nil, "BACKGROUND")
-    t:SetTexture(TEX .. "glow")
-    t:SetVertexColor(0, 0, 0, alpha)
-    t:SetTexCoord(p[5], p[6], p[7], p[8])
-    t:SetPoint(p[1], f, p[2])
-    if p[3] then t:SetPoint(p[3], f, p[4]) end
-    if i <= 4 or i >= 7 then t:SetWidth(s) end
-    if i <= 6 then t:SetHeight(s) end
+-- Bamboo frame -------------------------------------------------------------------
+-- Four dark green poles that cross and overhang at the corners, rope X lashings and two flat
+-- leaf sprigs lying along the poles (never sticking out of the frame), all
+-- cut from one small illustrated atlas (frame.tga, made by tools/make_frame.py). A pole is laid
+-- out from repeated 64px internode pieces (the client won't repeat a texture), so the nodes keep
+-- their spacing on any window size. Everything is created once and reused.
+local ATLAS = TEX .. "frame"
+local function TC(x, y, w, h) return { x / 256, (x + w) / 256, y / 64, (y + h) / 64 } end
+local HPOLE, HEND, VEND = TC(0, 0, 64, 16), TC(64, 0, 8, 16), TC(72, 0, 16, 8)
+local LASHING, VPOLE, LEAF = TC(88, 0, 32, 32), TC(120, 0, 16, 64), TC(136, 0, 64, 16)
+local POLE = 15                    -- pole thickness on screen
+local POLE_AT = 9                  -- pole centre line, from the frame edge
+local OVERHANG = 10                -- how far the poles run past the crossings
+local PIECE = 64 * POLE / 16       -- one internode on screen (60px between nodes)
+local CAP = 8 * POLE / 16          -- the cut end
+local LASH_SIZE = 30
+local LEAF_LENGTH = 64 * POLE / 16 -- the flat sprig, lying on a pole
+local BAMBOO_SHARE = 0.75          -- the bamboo is this much as opaque as the cloth (more see-through)
+local POLE_START = POLE_AT - POLE / 2 - OVERHANG -- where a pole begins (negative = outside)
+
+local function AtlasTexture(parent, layer, w, h)
+  local t = parent:CreateTexture(nil, layer)
+  t:SetTexture(ATLAS)
+  t:SetWidth(w)
+  t:SetHeight(h)
+  return t
+end
+
+-- side: "TOP", "BOTTOM", "LEFT" or "RIGHT". level orders the poles: verticals lie on the horizontals.
+local function NewPole(f, side, level)
+  local holder = CreateFrame("Frame", nil, f)
+  holder:SetFrameLevel(f:GetFrameLevel() + level)
+  local edge = POLE_AT - POLE / 2
+  local horizontal = side == "TOP" or side == "BOTTOM"
+  if side == "TOP" then
+    holder:SetPoint("TOPLEFT", POLE_START, -edge); holder:SetPoint("TOPRIGHT", -POLE_START, -edge)
+  elseif side == "BOTTOM" then
+    holder:SetPoint("BOTTOMLEFT", POLE_START, edge); holder:SetPoint("BOTTOMRIGHT", -POLE_START, edge)
+  elseif side == "LEFT" then
+    holder:SetPoint("TOPLEFT", edge, -POLE_START); holder:SetPoint("BOTTOMLEFT", edge, POLE_START)
+  else
+    holder:SetPoint("TOPRIGHT", -edge, -POLE_START); holder:SetPoint("BOTTOMRIGHT", -edge, POLE_START)
+  end
+  local p = { holder = holder, horizontal = horizontal, pieces = {} }
+  if horizontal then
+    holder:SetHeight(POLE)
+    p.capA = AtlasTexture(holder, "ARTWORK", CAP, POLE)
+    p.capA:SetPoint("LEFT")
+    p.capA:SetTexCoord(HEND[2], HEND[1], HEND[3], HEND[4]) -- mirrored: cut end on the left
+    p.capB = AtlasTexture(holder, "ARTWORK", CAP, POLE)
+    p.capB:SetPoint("RIGHT")
+    p.capB:SetTexCoord(unpack(HEND))
+  else
+    holder:SetWidth(POLE)
+    p.capA = AtlasTexture(holder, "ARTWORK", POLE, CAP)
+    p.capA:SetPoint("TOP")
+    p.capA:SetTexCoord(VEND[1], VEND[2], VEND[4], VEND[3]) -- flipped: cut end at the top
+    p.capB = AtlasTexture(holder, "ARTWORK", POLE, CAP)
+    p.capB:SetPoint("BOTTOM")
+    p.capB:SetTexCoord(unpack(VEND))
+  end
+  return p
+end
+
+local function LayoutPole(p, length)
+  local body = length - 2 * CAP
+  local n = math.ceil(body / PIECE)
+  for i = 1, math.max(n, #p.pieces) do
+    local t = p.pieces[i]
+    if i <= n then
+      if not t then
+        t = p.holder:CreateTexture(nil, "ARTWORK")
+        t:SetTexture(ATLAS)
+        p.pieces[i] = t
+      end
+      local len = math.min(PIECE, body - (i - 1) * PIECE)
+      local frac = len / PIECE
+      t:ClearAllPoints()
+      if p.horizontal then
+        t:SetPoint("LEFT", CAP + (i - 1) * PIECE, 0)
+        t:SetWidth(len)
+        t:SetHeight(POLE)
+        t:SetTexCoord(HPOLE[1], HPOLE[1] + (HPOLE[2] - HPOLE[1]) * frac, HPOLE[3], HPOLE[4])
+      else
+        t:SetPoint("TOP", 0, -(CAP + (i - 1) * PIECE))
+        t:SetWidth(POLE)
+        t:SetHeight(len)
+        t:SetTexCoord(VPOLE[1], VPOLE[2], VPOLE[3], VPOLE[3] + (VPOLE[4] - VPOLE[3]) * frac)
+      end
+      t:Show()
+    elseif t then
+      t:Hide()
+    end
   end
 end
 
--- Etched divider: a dark line with a faint light line under it. Returns the dark line to anchor.
-local function Groove(parent)
-  local dark = Solid(parent, "ARTWORK", { 0, 0, 0, 0.6 })
-  local light = Solid(parent, "ARTWORK", { 1, 1, 1, 0.07 })
-  light:SetPoint("TOPLEFT", dark, "BOTTOMLEFT")
-  light:SetPoint("TOPRIGHT", dark, "BOTTOMRIGHT")
-  PixelJob(function(p) dark:SetHeight(p); light:SetHeight(p) end)
-  return dark
+local function BuildFrame(w, f)
+  w.poles = {
+    NewPole(f, "TOP", 2), NewPole(f, "BOTTOM", 2), NewPole(f, "LEFT", 3), NewPole(f, "RIGHT", 3),
+  }
+  local top = CreateFrame("Frame", nil, f) -- lashings and leaves, above the poles
+  top:SetFrameLevel(f:GetFrameLevel() + 4)
+  top:SetAllPoints()
+  w.bamboo = { w.poles[1].holder, w.poles[2].holder, w.poles[3].holder, w.poles[4].holder, top }
+  -- Two flat leaf sprigs lying on the top and bottom poles, next to opposite corners
+  local leaf = AtlasTexture(top, "ARTWORK", LEAF_LENGTH, POLE)
+  leaf:SetTexCoord(unpack(LEAF))
+  leaf:SetPoint("LEFT", f, "TOPLEFT", POLE_AT + LASH_SIZE / 2, -POLE_AT)
+  leaf = AtlasTexture(top, "ARTWORK", LEAF_LENGTH, POLE)
+  leaf:SetTexCoord(LEAF[2], LEAF[1], LEAF[3], LEAF[4]) -- mirrored: leaves point left
+  leaf:SetPoint("RIGHT", f, "BOTTOMRIGHT", -(POLE_AT + LASH_SIZE / 2), POLE_AT)
+  -- Rope X at every crossing (mirrored on two corners so they don't all look stamped)
+  local corners = {
+    { "TOPLEFT", POLE_AT, -POLE_AT, false }, { "TOPRIGHT", -POLE_AT, -POLE_AT, true },
+    { "BOTTOMLEFT", POLE_AT, POLE_AT, true }, { "BOTTOMRIGHT", -POLE_AT, POLE_AT, false },
+  }
+  for _, c in ipairs(corners) do
+    local t = AtlasTexture(top, "OVERLAY", LASH_SIZE, LASH_SIZE)
+    t:SetPoint("CENTER", f, c[1], c[2], c[3])
+    if c[4] then
+      t:SetTexCoord(LASHING[2], LASHING[1], LASHING[3], LASHING[4])
+    else
+      t:SetTexCoord(unpack(LASHING))
+    end
+  end
+  -- The poles' soft shadow on the cloth (light from the top left)
+  local inner = POLE_AT + POLE / 2
+  local s = Solid(f, "BORDER", BLACK)
+  s:SetPoint("TOPLEFT", inner, -inner)
+  s:SetPoint("TOPRIGHT", -inner, -inner)
+  s:SetHeight(6)
+  s:SetGradientAlpha("VERTICAL", 0, 0, 0, 0, 0.12, 0.08, 0.02, 0.28)
+  s = Solid(f, "BORDER", BLACK)
+  s:SetPoint("TOPLEFT", inner, -inner)
+  s:SetPoint("BOTTOMLEFT", inner, inner)
+  s:SetWidth(5)
+  s:SetGradientAlpha("HORIZONTAL", 0.12, 0.08, 0.02, 0.22, 0, 0, 0, 0)
 end
 
--- Covers the frame (inside the bamboo border) with 128px weave tiles, cropping the last row/column.
+local function LayoutFrame(w, width, height)
+  if w.poleW == width and w.poleH == height then return end
+  w.poleW, w.poleH = width, height
+  LayoutPole(w.poles[1], width - 2 * POLE_START)
+  LayoutPole(w.poles[2], width - 2 * POLE_START)
+  LayoutPole(w.poles[3], height - 2 * POLE_START)
+  LayoutPole(w.poles[4], height - 2 * POLE_START)
+end
+
+-- Covers the frame (under the bamboo) with 128px hemp tiles, cropping the last row/column.
 -- Tiles are created once and reused; only runs when the window is laid out.
 local TILE = 128
-local TILE_INSET = 3 -- the bamboo stalks start a few pixels in from the frame edge
+local TILE_INSET = POLE_AT -- the cloth starts under the middle of the poles, so they are its edge
 local function TileBackground(f, w, h)
   w, h = w - TILE_INSET * 2, h - TILE_INSET * 2
   local cols, rows = math.ceil(w / TILE), math.ceil(h / TILE)
@@ -171,7 +285,7 @@ local function TileBackground(f, w, h)
       local t = f.tiles[n]
       if not t then
         t = f:CreateTexture(nil, "BACKGROUND")
-        t:SetTexture(TEX .. "weave")
+        t:SetTexture(TEX .. "hemp")
         f.tiles[n] = t
       end
       t:ClearAllPoints()
@@ -184,11 +298,12 @@ local function TileBackground(f, w, h)
     end
   end
   for i = n + 1, #f.tiles do f.tiles[i]:Hide() end
+  return alpha
 end
 
 -- Lays out a stitch line of the given width from 64px pieces (the client won't repeat a
--- texture); pieces are created once and reused. Tinted to the gold accent and kept faint.
-local STITCH_ALPHA = 0.5
+-- texture); pieces are created once and reused. A pale hemp thread, kept faint on the dark cloth.
+local STITCH_ALPHA = 0.55
 local function SetStitchWidth(line, w)
   line:SetWidth(w)
   local n = math.ceil(w / 64)
@@ -198,7 +313,7 @@ local function SetStitchWidth(line, w)
       if not seg then
         seg = line:CreateTexture(nil, "ARTWORK")
         seg:SetTexture(TEX .. "stitch")
-        seg:SetVertexColor(1, 0.95, 0.85, STITCH_ALPHA)
+        seg:SetVertexColor(0.95, 0.88, 0.75, STITCH_ALPHA)
         seg:SetHeight(8)
         seg:SetPoint("LEFT", (i - 1) * 64, 0)
         line.segs[i] = seg
@@ -213,30 +328,32 @@ local function SetStitchWidth(line, w)
   end
 end
 
--- Raised button: dark vertical gradient, black outline and a lit top edge. Lighter with a gold
--- edge on hover, pressed in (darker, text nudged down) while held.
+-- Button: a sewn-on dark cloth label. Warm dark-brown gradient, black outline, faint lit top edge;
+-- lighter with a bamboo-green edge on hover, pressed in (darker, text nudged) while held.
+local LABEL_EDGE = { 0, 0, 0, 0.85 }
 local function StyledButton(parent, label, width, onClick)
   local b = CreateFrame("Button", nil, parent)
   b:SetWidth(width)
   b:SetHeight(18)
   local bg = Solid(b, "BACKGROUND", TEXT)
   bg:SetAllPoints()
-  local outline = Ring(b, "BORDER", 0, BLACK, BLACK)
-  local rim = EdgeLine(b, "ARTWORK", "TOP", 1, { 1, 1, 1, 0.13 })
-  local hoverEdge = { ACCENT[1], ACCENT[2], ACCENT[3], 0.6 }
+  local outline = Ring(b, "BORDER", 0, LABEL_EDGE, LABEL_EDGE)
+  local rim = EdgeLine(b, "ARTWORK", "TOP", 1, { 1, 1, 1, 0.12 })
+  local hoverEdge = { ACCENT[1], ACCENT[2], ACCENT[3], 0.9 }
   local text = b:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+  text:SetShadowOffset(0, 0)
   text:SetText(label)
 
   local hover, down
   local function Paint()
-    local top, bottom = 0.2, 0.1
-    if down then top, bottom = 0.09, 0.13
-    elseif hover then top, bottom = 0.3, 0.16 end
-    bg:SetGradientAlpha("VERTICAL", bottom, bottom, bottom + 0.01, 0.92, top, top, top + 0.015, 0.92)
+    local top, bottom = 0.25, 0.14
+    if down then top, bottom = 0.11, 0.16
+    elseif hover then top, bottom = 0.34, 0.2 end
+    bg:SetGradientAlpha("VERTICAL", bottom, bottom * 0.88, bottom * 0.7, 0.92, top, top * 0.88, top * 0.7, 0.92)
     rim:SetAlpha(down and 0 or 1)
-    local edge = hover and hoverEdge or BLACK
+    local edge = hover and hoverEdge or LABEL_EDGE
     SetRingColor(outline, edge, edge)
-    if hover then text:SetTextColor(1, 1, 1) else text:SetTextColor(unpack(TEXT)) end
+    if hover then text:SetTextColor(1, 1, 1) else text:SetTextColor(unpack(INK)) end
     text:ClearAllPoints()
     text:SetPoint("CENTER", down and 1 or 0, down and -1 or 0)
   end
@@ -291,7 +408,7 @@ local function UpdateButton(b, bag, slot)
   if not link then
     SetItemButtonTexture(b, EMPTY_SLOT)
     SetItemButtonCount(b, 0)
-    b.icon:SetVertexColor(0.5, 0.5, 0.53)
+    b.icon:SetVertexColor(0.52, 0.48, 0.42) -- empty pocket, warm like the cloth
     b.searchText = nil
     return
   end
@@ -362,30 +479,39 @@ local function NewWindow(frameName, opts)
   f:RegisterForDrag("LeftButton")
   tinsert(UISpecialFrames, frameName) -- Escape closes it
 
-  -- Look: a solid bamboo frame (lashed corners) around translucent dark hemp cloth (tiles laid
-  -- out by TileBackground; backdrop tiling smears), light from above, soft drop shadow.
-  f:SetBackdrop({
-    edgeFile = TEX .. "bamboo", edgeSize = BAMBOO_EDGE,
-    insets = { left = 3, right = 3, top = 3, bottom = 3 },
-  })
-  f:SetBackdropBorderColor(1, 1, 1, 1)
+  -- Look: a lashed bamboo frame (BuildFrame) around natural hemp cloth (tiles laid out by
+  -- TileBackground; backdrop tiling smears), lit softly from above.
   f.tiles = {}
-  DropShadow(f, 12, 0.55)
+  BuildFrame(w, f)
   local shade = Solid(f, "BORDER", TEXT)
-  shade:SetPoint("TOPLEFT", 3, -3)
-  shade:SetPoint("BOTTOMRIGHT", -3, 3)
-  shade:SetGradientAlpha("VERTICAL", 0, 0, 0, 0.25, 1, 1, 1, 0.045)
+  shade:SetPoint("TOPLEFT", TILE_INSET, -TILE_INSET)
+  shade:SetPoint("BOTTOMRIGHT", -TILE_INSET, TILE_INSET)
+  shade:SetGradientAlpha("VERTICAL", 0, 0, 0, 0.18, 1, 0.95, 0.85, 0.04)
 
   local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
   title:SetPoint("TOPLEFT", INSET, -(INSET - 3))
   title:SetText(opts.title)
-  title:SetTextColor(0.95, 0.95, 0.95)
+  title:SetTextColor(unpack(INK))
+  title:SetShadowColor(unpack(EMBOSS))
   title:SetShadowOffset(1, -1)
 
-  local headerLine = Groove(f)
-  headerLine:SetPoint("TOPLEFT", INSET - 3, -(INSET + HEADER - 9))
-  headerLine:SetPoint("TOPRIGHT", -(INSET - 3), -(INSET + HEADER - 9))
-  w.footerLine = Groove(f)
+  -- Pouch flaps: the header and footer are a darker fold of the cloth, sewn down with a seam
+  local flap = Solid(f, "BORDER", BLACK)
+  flap:SetPoint("TOPLEFT", TILE_INSET, -TILE_INSET)
+  flap:SetPoint("TOPRIGHT", -TILE_INSET, -TILE_INSET)
+  flap:SetHeight(INSET + HEADER - 9 - TILE_INSET)
+  flap:SetGradientAlpha("VERTICAL", 0, 0, 0, 0.26, 0, 0, 0, 0.14)
+  w.headerSeam = CreateFrame("Frame", nil, f)
+  w.headerSeam.segs = {}
+  w.headerSeam:SetHeight(8)
+  w.headerSeam:SetPoint("LEFT", f, "TOPLEFT", INSET - 3, -(INSET + HEADER - 9))
+  w.footerFlap = Solid(f, "BORDER", BLACK)
+  w.footerFlap:SetPoint("BOTTOMLEFT", TILE_INSET, TILE_INSET)
+  w.footerFlap:SetPoint("BOTTOMRIGHT", -TILE_INSET, TILE_INSET)
+  w.footerFlap:SetGradientAlpha("VERTICAL", 0, 0, 0, 0.14, 0, 0, 0, 0.26)
+  w.footerSeam = CreateFrame("Frame", nil, f)
+  w.footerSeam.segs = {}
+  w.footerSeam:SetHeight(8)
 
   -- Header buttons are laid out right to left
   local last
@@ -394,7 +520,7 @@ local function NewWindow(frameName, opts)
     if last then
       b:SetPoint("RIGHT", last, "LEFT", -2, 0)
     else
-      b:SetPoint("TOPRIGHT", -INSET + 4, -(INSET - 6))
+      b:SetPoint("TOPRIGHT", -INSET + 1, -(INSET - 6))
     end
     last = b
     return b
@@ -417,17 +543,21 @@ local function NewWindow(frameName, opts)
   search:SetWidth(104)
   search:SetHeight(18)
   search:SetPoint("RIGHT", last, "LEFT", -8, 0)
-  local searchBg = Solid(search, "BACKGROUND", { 0, 0, 0, 0.45 })
+  search:SetTextColor(unpack(INK))
+  search:SetShadowOffset(0, 0)
+  local searchBg = Solid(search, "BACKGROUND", { 0, 0, 0, 0.35 })
   searchBg:SetAllPoints()
   local innerShadow = Solid(search, "BORDER", BLACK)
   innerShadow:SetPoint("TOPLEFT")
   innerShadow:SetPoint("TOPRIGHT")
   innerShadow:SetHeight(5)
   innerShadow:SetGradientAlpha("VERTICAL", 0, 0, 0, 0, 0, 0, 0, 0.4)
-  local SUNKEN_LIT, SUNKEN_SHADE = { 0, 0, 0, 0.9 }, { 1, 1, 1, 0.12 }
-  local FOCUS = { ACCENT[1], ACCENT[2], ACCENT[3], 0.7 }
+  local SUNKEN_LIT, SUNKEN_SHADE = { 0, 0, 0, 0.85 }, { 1, 1, 1, 0.1 }
+  local FOCUS = { ACCENT[1], ACCENT[2], ACCENT[3], 0.9 }
   local searchEdge = Ring(search, "ARTWORK", 0, SUNKEN_LIT, SUNKEN_SHADE)
   local placeholder = search:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
+  placeholder:SetTextColor(unpack(INK_SOFT))
+  placeholder:SetShadowOffset(0, 0)
   placeholder:SetPoint("LEFT", 6, 0)
   placeholder:SetText("Search")
   search:SetScript("OnEditFocusGained", function()
@@ -442,24 +572,33 @@ local function NewWindow(frameName, opts)
   search:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
   search:SetScript("OnTextChanged", function() w:ApplySearch() end)
 
-  -- Section titles, each followed by a quiet embroidered running stitch in the same gold
+  -- Section titles in dark ink, each followed by a quiet embroidered running stitch
   for _, s in ipairs(SECTIONS) do
     local t = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     t:SetText(s.label)
-    t:SetTextColor(unpack(ACCENT))
+    t:SetTextColor(unpack(INK))
+    t:SetShadowColor(unpack(EMBOSS))
+    t:SetShadowOffset(1, -1)
     local line = CreateFrame("Frame", nil, f)
     line.segs = {}
     line:SetHeight(8)
     line:SetPoint("LEFT", t, "RIGHT", 6, 0)
-    w.sectionTitles[s.key] = { title = t, line = line }
+    -- A sewn-on label tape behind the title row: darker cloth fading out to the right
+    local band = Solid(f, "BORDER", BLACK)
+    band:SetGradientAlpha("HORIZONTAL", 0, 0, 0, 0.3, 0, 0, 0, 0.02)
+    band:SetHeight(SECTION_TITLE - 1)
+    w.sectionTitles[s.key] = { title = t, line = line, band = band }
   end
 
   w.freeText = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
   w.freeText:SetPoint("BOTTOMLEFT", INSET, INSET - 4)
-  w.freeText:SetTextColor(unpack(MUTED))
+  w.freeText:SetTextColor(unpack(INK_SOFT))
+  w.freeText:SetShadowOffset(0, 0)
   if opts.showMoney then
     w.moneyText = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     w.moneyText:SetPoint("BOTTOMRIGHT", -INSET, INSET - 4)
+    w.moneyText:SetTextColor(unpack(INK))
+    w.moneyText:SetShadowOffset(0, 0)
   end
 
   f:SetScript("OnDragStart", f.StartMoving)
@@ -615,6 +754,10 @@ function Window:Refresh()
         st.title:ClearAllPoints()
         st.title:SetPoint("TOPLEFT", f, "TOPLEFT", INSET, -y)
         st.title:Show()
+        st.band:ClearAllPoints()
+        st.band:SetPoint("TOPLEFT", f, "TOPLEFT", INSET - 4, -(y - 1))
+        st.band:SetPoint("TOPRIGHT", f, "TOPRIGHT", -(INSET - 4), -(y - 1))
+        st.band:Show()
         local lineW = width - INSET * 2 - st.title:GetStringWidth() - 6
         SetStitchWidth(st.line, lineW)
         st.line:Show()
@@ -622,12 +765,14 @@ function Window:Refresh()
       else
         st.title:Hide()
         st.line:Hide()
+        st.band:Hide()
       end
     end
   else
     for _, st in pairs(self.sectionTitles) do
       st.title:Hide()
       st.line:Hide()
+      st.band:Hide()
     end
     y = self:PlaceGrid(all, y) + SECTION_GAP
   end
@@ -635,10 +780,15 @@ function Window:Refresh()
   local footer = self.footer + (self.extraFooter or 0)
   local height = y - SECTION_GAP + footer + INSET
   f:SetHeight(height)
-  TileBackground(f, width, height)
-  self.footerLine:ClearAllPoints()
-  self.footerLine:SetPoint("BOTTOMLEFT", INSET - 3, INSET + footer - 3)
-  self.footerLine:SetPoint("BOTTOMRIGHT", -(INSET - 3), INSET + footer - 3)
+  local alpha = TileBackground(f, width, height)
+  LayoutFrame(self, width, height)
+  for _, part in ipairs(self.bamboo) do part:SetAlpha(alpha * BAMBOO_SHARE) end
+  local seamW = width - (INSET - 3) * 2
+  SetStitchWidth(self.headerSeam, seamW)
+  self.footerFlap:SetHeight(INSET + footer - 5 - TILE_INSET)
+  self.footerSeam:ClearAllPoints()
+  self.footerSeam:SetPoint("LEFT", f, "BOTTOMLEFT", INSET - 3, INSET + footer - 5)
+  SetStitchWidth(self.footerSeam, seamW)
 
   self.sortButton.text:SetText(BambooBagsDB.sorted and "Sections" or "Bag order")
   self.freeText:SetText(string.format("Free %d/%d", #empties, #all))
@@ -754,6 +904,8 @@ for i = 1, MAX_WATCHED_TOKENS or 3 do
   b.icon:SetPoint("RIGHT")
   b.text = b:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
   b.text:SetPoint("RIGHT", b.icon, "LEFT", -2, 0)
+  b.text:SetTextColor(unpack(INK))
+  b.text:SetShadowOffset(0, 0)
   if i == 1 then
     b:SetPoint("LEFT", bagsWindow.freeText, "RIGHT", 12, 0)
   else

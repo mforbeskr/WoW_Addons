@@ -24,10 +24,13 @@ Addons must run well on weak PCs:
   It must still stop when idle (no units shown).
 
 ## Addons
-- **BambooBags** (window title "Bags") - bag/bank replacement. Opaque bamboo frame around a
-  translucent dark hemp weave (`textures/weave.tga`, made by the PowerShell script in `tools/`;
-  `/bb alpha 0.2-1`), faint gold stitched section lines, drop shadow, raised buttons, sunken
-  search. linen.tga is still used by TransmogStudio. Footer shows the currencies ticked "Show on Backpack" (emblems, honor). Sections: Gear (ilvl 200+),
+- **BambooBags** (window title "Bags") - bag/bank replacement. Illustrated dark green bamboo frame
+  (poles crossing and overhanging at the corners, rope X lashings, two flat leaf sprigs lying along
+  the poles; 75% as opaque as the cloth) from `textures/frame.tga`
+  (256x64 atlas) around dark toasted hemp cloth (`textures/hemp.tga`, 128px, 80% opaque,
+  `/bb alpha 0.2-1`). Both made by `tools/make_frame.py` (python); the older linen/stitch/bamboo
+  textures come from `tools/make_textures.ps1` (TransmogStudio uses linen + bamboo). Cream text,
+  dark cloth-label buttons, flaps sewn with stitched seams, label bands on section titles. Sections: Gear (ilvl 200+),
   Outfits (cosmetics/transmog), General. Search, sort, ilvl text, quality borders,
   free-slot counter, sell-grey-junk button at vendors (skips items moved to Outfits),
   bank bag slot row + buy-slot button in the bank window, Alt+click moves items
