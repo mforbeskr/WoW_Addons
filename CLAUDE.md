@@ -38,14 +38,15 @@ Addons must run well on weak PCs:
   between sections, movable windows with saved positions.
 - **GearDump** - exports equipped/bag/bank items (ilvl, ID, enchants, gems) and saved Equipment
   Manager sets as text.
-- **GearOptimizer** (`/gopt`) - best gear you own per job, calculated only when you press "Find best
-  <job> build". Builds (`Core.lua` BUILDS, per character, guessed from talents): On-hit -> Raid;
-  Spellhance -> Raid (single target) + AOE (packs). Weights from the owner's priorities (`PROFILES`).
-  Scores GetItemStats + gems, weapon DPS per hand, empty sockets as gemmed, trinket/totem effects
-  parsed from the tooltip (Use: duration/cooldown, procs ~dur/(dur+45s), stacks x0.8), tier set
-  bonuses (tries 2/4/5-piece and 2+2 trades); unreadable effects/bonuses estimated, shown "~". Hit/
-  expertise worth less past caps that follow talents and Draenei. "Equip all changes": own-slot swaps,
-  bank fetch if open, then equip. Save as "Opt <job>" Equipment Manager set. Bank remembered per char.
+- **GearOptimizer** (`/gopt`) - finds the gear you own with the highest estimated DPS, only when you
+  press "Find best Raid/AOE build". `Model.lua`: closed-form Enhancement Shaman DPS model (talents
+  read by name, base stats, ICC raid buffs in `RAID_BUFFS`; white/WF/SS/LL/FT/Static Shock/shocks/
+  Maelstrom LB or CL/totems/Fire Nova/wolves). `Core.lua`: reads items (stats, gems, weapon speed,
+  Use/proc effects, set bonus text) and glyph text into model modifiers; procs valued from the set's
+  event rates then re-evaluated; unreadable effects/bonuses estimated ("~"). Search: hill-climb from
+  worn gear (rings/trinkets/weapons as pairs) + set-bonus trades. `/gopt model` prints the per-ability
+  breakdown to compare with Skada. Equip all changes (own-slot swaps, bank fetch, equip) + Save as
+  "Opt <scenario>" Equipment Manager set. Bank remembered per character.
 - **RangeGauge** (`/rg`) - live range to target/focus/party1-4/arena1-5 vs. your reach line.
   Per-class profiles in `Checks.lua`: enemy (Hunter Auto Shot +Hawk Eye; Priest SW:P +Shadow Reach)
   and ally (Priest Flash Heal 40 yd, "heal" color style, party rows, `/rg party`). Rows are

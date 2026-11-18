@@ -1,8 +1,9 @@
 ## Interface: 30300
 ## Title: Gear Optimizer
-## Notes: Best gear you own per job: On-hit raid, Spellhance raid + AOE (Shaman so far). /gopt
-## Version: 0.3
+## Notes: Finds the gear you own with the highest estimated DPS: Raid and AOE (Enhancement Shaman). /gopt
+## Version: 0.4
 ## SavedVariablesPerCharacter: GearOptimizerCharDB
 
+Model.lua
 Core.lua
 UI.lua

@@ -113,7 +113,7 @@ Next ideas:
 
 ---
 
-## Gear optimizer (v0.3 built 2026-11-18: On-hit + Spellhance Raid/AOE, trinkets, totems, set bonuses, `/gopt`)
+## Gear optimizer (v0.4 built 2026-11-18: DPS model, talents, glyphs, procs, set bonuses, `/gopt`)
 
 An addon that builds the best gear set from what you own for different purposes, e.g.
 healing PvE, healing PvP (resilience), damage, solo/farming. As lightweight as possible.
@@ -132,8 +132,7 @@ healing PvE, healing PvP (resilience), damage, solo/farming. As lightweight as p
   stays Blizzard's job.
 - **Lightweight:** only work when you open it or click "optimize", no background
   scanning, no libraries; cache item stats per item ID for the session.
-- Open questions: hit cap / defense cap handling (soft caps in the weights), and where
-  to get good default weights per spec.
+- Next: calibrate the model against Skada (`/gopt model`), more classes/specs.
 
 ---
 

@@ -1,7 +1,7 @@
--- UI: one small window. At the top: your build (On-hit / Spellhance, remembered per character)
--- and a "Find best ... build" button per job. Nothing is calculated until you press one.
--- Then a row per slot: what you wear -> what to wear instead. Changed rows are highlighted,
--- unchanged ones say "same". Below: score, caps, set bonuses, your saved sets, and two buttons:
+-- UI: one small window. At the top a "Find best ... build" button per scenario (Raid, AOE).
+-- Nothing is calculated until you press one. Then a row per slot: what you wear -> what to wear
+-- instead. Changed rows are highlighted, unchanged ones say "same". Below: estimated DPS, the
+-- stats it gives, the set bonuses and glyphs counted, your saved sets, and two buttons:
 -- Equip all changes (one click) and Save as an Equipment Manager set.
 -- Created once on first open; while shown, gear changes only refresh the "wearing" side.
 
@@ -12,7 +12,7 @@ local COL_SLOT, COL_ITEM = 62, 196
 local WIDTH = 12 + COL_SLOT + COL_ITEM + 22 + COL_ITEM + 12
 local GOOD, MUTED, WARN = { 0.45, 0.85, 0.35 }, { 0.62, 0.6, 0.56 }, { 1, 0.75, 0.3 }
 
-local f, rows, buildButtons, findButtons, header, capsText, bonusText, savedText, info
+local f, rows, findButtons, header, capsText, bonusText, savedText, info
 local equipButton, saveButton
 local result, resultKey
 local dirty = false
@@ -98,7 +98,7 @@ local function Render()
   end
 
   if not result then
-    header:SetText("Pick your build, then press Find.")
+    header:SetText("Press Find: it tries every combination of the gear you own.")
     capsText:SetText("")
     bonusText:SetText("")
     savedText:SetText("")
@@ -107,12 +107,12 @@ local function Render()
     return
   end
 
-  local r, prof = result, result.profile
-  local pct = r.curValue > 0 and (r.bestValue / r.curValue - 1) * 100 or 0
-  header:SetText(string.format("Best %s build (%s):  score %d -> %d  %s+%.1f%%|r", prof.name, prof.purpose,
-    r.curValue, r.bestValue, Color(pct > 0.05 and GOOD or MUTED), pct))
-  capsText:SetText(string.format("%s hit %d -> %d of %d     Expertise %d -> %d of %d",
-    prof.hitType == "spell" and "Spell" or "Melee", r.curHit, r.bestHit, r.caps.hit, r.curExp, r.bestExp, r.caps.exp))
+  local r, sc, st = result, result.scenario, result.stats
+  local pct = r.curDPS > 0 and (r.bestDPS / r.curDPS - 1) * 100 or 0
+  header:SetText(string.format("Best %s build (%s):  ~%d -> %d DPS  %s+%.1f%%|r", sc.name, sc.purpose,
+    r.curDPS, r.bestDPS, Color(pct > 0.05 and GOOD or MUTED), pct))
+  capsText:SetText(string.format("AP %d  SP %d  crit %.1f%% / spell %.1f%%  hit %.1f%% / spell %.1f%%  expertise %d",
+    st.ap, st.sp, 100 * st.meleeCrit, 100 * st.spellCrit, st.hitPct, st.spellHitPct, st.expertise))
 
   if #r.bonuses > 0 then
     local parts = {}
@@ -124,18 +124,20 @@ local function Render()
   else
     bonusText:SetText("Set bonuses: none in this build")
   end
+  bonusText:SetText(bonusText:GetText() .. "\nGlyphs counted: "
+    .. (#r.glyphs > 0 and table.concat(r.glyphs, ", ") or "none that change damage"))
 
   if #r.saved > 0 then
     local parts = {}
-    for _, s in ipairs(r.saved) do table.insert(parts, string.format("%s %d", s.name, s.value)) end
-    savedText:SetText("Your saved sets, same score: " .. table.concat(parts, "   "))
+    for _, s in ipairs(r.saved) do table.insert(parts, string.format("%s %d", s.name, s.dps)) end
+    savedText:SetText("Your saved sets, est. DPS: " .. table.concat(parts, "   "))
   else
     savedText:SetText("Your saved sets: none yet")
   end
 
   equipButton:Show()
   saveButton:Show()
-  saveButton:SetText("Save as \"Opt " .. prof.name .. "\"")
+  saveButton:SetText("Save as \"Opt " .. sc.name .. "\"")
   if ns.Wearing(r) then
     equipButton:Disable()
     saveButton:Enable()
@@ -147,6 +149,7 @@ end
 
 local function UpdateNotes()
   local notes = {
+    "Estimated DPS with ICC raid buffs; your talents, glyphs, procs and set bonuses included.",
     "~ = estimated (an effect or set bonus it can't read). Not counted: enchants, socket bonuses.",
   }
   if result and result.missing > 0 then
@@ -157,20 +160,11 @@ local function UpdateNotes()
 end
 
 local function LayoutFindButtons()
-  local build = ns.Build()
   for i, btn in ipairs(findButtons) do
-    local key = build and build.profiles[i]
-    if key then
-      btn.key = key
-      btn:SetText("Find best " .. ns.PROFILES[key].name .. " build")
-      btn:Show()
-      if key == resultKey then btn:LockHighlight() else btn:UnlockHighlight() end
-    else
-      btn:Hide()
-    end
-  end
-  for _, btn in ipairs(buildButtons) do
-    if build and btn.key == build.key then btn:LockHighlight() else btn:UnlockHighlight() end
+    local key = ns.SCENARIOS[i]
+    btn.key = key
+    btn:SetText("Find best " .. ns.Model.SCENARIOS[key].name .. " build")
+    if key == resultKey then btn:LockHighlight() else btn:UnlockHighlight() end
   end
 end
 
@@ -201,28 +195,14 @@ local function Build()
   local close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
   close:SetPoint("TOPRIGHT", 2, 2)
 
-  -- Build choice (remembered per character); switching clears the old result
-  buildButtons = {}
-  local last
-  for i, b in ipairs(ns.BUILDS) do
-    local btn = Button(b.label, 84, function()
-      ns.SetBuild(b.key)
-      result, resultKey = nil, nil
-      LayoutFindButtons()
-      Render()
-    end)
-    if last then btn:SetPoint("LEFT", last, "RIGHT", 4, 0) else btn:SetPoint("LEFT", title, "RIGHT", 14, 0) end
-    btn.key = b.key
-    buildButtons[i] = btn
-    last = btn
-  end
-
-  -- One Find button per job of the build; calculating happens only here
+  -- One Find button per scenario; calculating happens only here
   findButtons = {}
   for i = 1, 2 do
     local btn = Button("Find", 170, nil)
     btn:SetScript("OnClick", function(self)
-      result, resultKey = ns.Find(self.key), self.key
+      local r, err = ns.Find(self.key)
+      if not r then ns.Print(err) return end
+      result, resultKey = r, self.key
       LayoutFindButtons()
       Render()
       UpdateNotes()
@@ -285,10 +265,10 @@ local function Build()
   end)
   equipButton:SetPoint("BOTTOMLEFT", 12, 10)
   saveButton = Button("Save", 160, function()
-    if result then ns.SaveSet("Opt " .. result.profile.name) end
+    if result then ns.SaveSet("Opt " .. result.scenario.name) end
   end)
   saveButton:SetPoint("LEFT", equipButton, "RIGHT", 6, 0)
-  f:SetHeight(-y + 128)
+  f:SetHeight(-y + 150)
 
   -- While shown: gear changes refresh the "wearing" side (no new search)
   f:RegisterEvent("UNIT_INVENTORY_CHANGED")
@@ -310,19 +290,19 @@ function ns.Toggle()
     f:Hide()
     return
   end
-  local build, err = ns.Build()
   f:Show()
   LayoutFindButtons()
-  if not build then
-    header:SetText(err)
-    equipButton:Hide()
-    saveButton:Hide()
-    return
-  end
   Render()
   UpdateNotes()
 end
 
 SLASH_GEAROPTIMIZER1 = "/gopt"
 SLASH_GEAROPTIMIZER2 = "/gearopt"
-SlashCmdList.GEAROPTIMIZER = function() ns.Toggle() end
+SlashCmdList.GEAROPTIMIZER = function(msg)
+  local cmd, arg = (msg or ""):lower():match("^(%S*)%s*(.-)$")
+  if cmd == "model" then
+    ns.ModelReport(arg == "aoe" and "AOE" or "RAID")
+  else
+    ns.Toggle()
+  end
+end
