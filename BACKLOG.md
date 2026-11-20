@@ -143,6 +143,8 @@ healing PvE, healing PvP (resilience), damage, solo/farming. As lightweight as p
   accurate (simulator). Then `/reload`.
 - Maelstrom Weapon tracker (enhancement): glow or sound at 5 stacks. Uses `UNIT_AURA`.
 - BambooBags: optionally sell more than greys (old food, etc.), never touching Outfits.
+- BambooBags (note 2026-11-20): give every item slot a border like the popup boxes in Jumpo
+  (bamboo frame with corner knots, see Jumpo's Settings / Essence Flow popups).
 
 ---
 
